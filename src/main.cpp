@@ -1,3 +1,4 @@
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <ranges>
@@ -1117,11 +1118,15 @@ private:
 };
 } // namespace views
 
-// concepts --------------------------------------------------------------------
+//------------------------------------------------------------------------------
+
+// TODO: handle const versions
+template<typename Out, typename T>
+concept indirectly_writable = stdf::iter_assignable_from<Out, T>;
 
 template<typename In, typename Out>
-concept iter_copyable =
-    std::indirectly_readable<In> && stdf::iter_assignable_from<
+concept indirectly_copyable =
+    std::indirectly_readable<In> && stdf::indirectly_writable<
         Out,
         decltype(stdf::iter_copy_from(std::declval<In>()))>;
 
@@ -1129,7 +1134,7 @@ template<
     std::ranges::input_range R,
     std::weakly_incrementable O,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires stdf::iter_copyable<std::ranges::iterator_t<R>, O>
+requires stdf::indirectly_copyable<std::ranges::iterator_t<R>, O>
 constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     copy_if(R&& in, O out, Pred pred)
 {
@@ -1156,8 +1161,33 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     return {std::move(first), std::move(out)};
 }
 
+template<typename In, typename Out>
+concept indirectly_movable =
+    std::indirectly_readable<In> && stdf::indirectly_writable<
+        Out,
+        decltype(stdf::iter_move_from(std::declval<In>()))>;
+
+// We need iter_assign_from(out, iter_move_from(in)); to be valid
+// and remove_cvref_t<decltype(iter_move_from(in))> should be movable
+// clang-format off
+template<typename In, typename Out>
+concept indirectly_movable_storable =
+    indirectly_movable<In, Out> &&
+    std::movable<
+        std::remove_cvref_t<decltype(stdf::iter_move_from(std::declval<Out>()))>
+    >;
+// clang-format on
+
+template<typename I>
+concept permutable = std::forward_iterator<I> &&
+    indirectly_movable_storable<I, I> && std::indirectly_swappable<I>;
+
+template<typename I, typename R = std::ranges::less>
+concept sortable = permutable<I> && std::indirect_strict_weak_order<R, I>;
+
 // simple selection sort
 template<std::ranges::random_access_range R, typename Cmp = std::ranges::less>
+requires sortable<std::ranges::iterator_t<R>, Cmp>
 void sort(R&& r, Cmp cmp = {})
 {
     auto begin = std::ranges::begin(r);
