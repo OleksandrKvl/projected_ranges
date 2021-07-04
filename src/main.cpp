@@ -1278,8 +1278,7 @@ template<
     std::ranges::input_range R,
     typename T,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires stdf::iter_assignable_from<
-    typename std::ranges::iterator_t<R>, const T&>
+requires indirectly_writable<std::ranges::iterator_t<R>, const T&>
 constexpr std::ranges::borrowed_iterator_t<R>
     replace_if(R&& r, Pred pred, const T& new_value)
 {
