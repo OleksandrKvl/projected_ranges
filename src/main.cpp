@@ -150,7 +150,6 @@ template<typename From>
 concept has_adl_iter_copy_from = (detail::class_or_enum<std::remove_cvref_t<From>>)
     && requires(From&& from)
 {
-    // TODO: check whether it's OK to cast to rvalue
     iter_copy_from(static_cast<From&&>(from));
 };
     // clang-format on
@@ -499,7 +498,6 @@ private:
             return std::ranges::iter_swap(x.current, y.current);
         }
 
-        // TODO: do we need const reference here?
         friend constexpr decltype(iter_copy_from(std::declval<BaseIter>()))
             iter_copy_from(const Iterator& it) noexcept
         {
@@ -1120,7 +1118,6 @@ private:
 
 //------------------------------------------------------------------------------
 
-// TODO: handle const versions
 template<typename Out, typename T>
 concept indirectly_writable = stdf::iter_assignable_from<Out, T>;
 
@@ -1592,12 +1589,10 @@ void replace_if_test()
 }
 
 // TODO
-// update/add concepts and use them to constrain provided algorithms
 // existing indirectly_readabe/writable/copyable are OK for pointers but
 // iterators are more than pointers, we need separate concepts for them.
 // we can use indirectly_readable because we don't change how we read from
 // iterators
-// indirectly_writable transforms to iter_assignable_from.
 int main()
 {
     projection_test();
