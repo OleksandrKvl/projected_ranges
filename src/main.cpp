@@ -18,16 +18,16 @@ template<typename T>
 concept class_or_enum =
     std::is_class_v<T> || std::is_union_v<T> || std::is_enum_v<T>;
 
-namespace iter_assign_to_cpo
+namespace iter_assign_from_cpo
 {
-    void iter_assign_to();
+    void iter_assign_from();
 
     // clang-format off
     template<typename To, typename From>
-    concept has_adl_iter_assign_to = (class_or_enum<std::remove_cvref_t<To>>) &&
+    concept has_adl_iter_assign_from = (class_or_enum<std::remove_cvref_t<To>>) &&
         requires(To&& to, From&& from)
         {
-            iter_assign_to(static_cast<To&&>(to), static_cast<From&&>(from));
+            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
         };
     // clang-format on
 
@@ -37,10 +37,10 @@ namespace iter_assign_to_cpo
         template<typename To, typename From>
         static constexpr bool is_noexcept()
         {
-            if constexpr(has_adl_iter_assign_to<To, From>)
+            if constexpr(has_adl_iter_assign_from<To, From>)
             {
                 return noexcept(
-                    iter_assign_to(std::declval<To>(), std::declval<From>()));
+                    iter_assign_from(std::declval<To>(), std::declval<From>()));
             }
             else
             {
@@ -51,14 +51,14 @@ namespace iter_assign_to_cpo
     public:
         // clang-format off
         template<typename To, typename From>
-        requires (has_adl_iter_assign_to<To, From> ||
-            std::assignable_from<std::iter_reference_t<To>, From>)
+        requires (has_adl_iter_assign_from<To, From> ||
+            std::indirectly_writable<To, From>)
         constexpr void operator()(To&& to, From&& from) const
             noexcept(is_noexcept<To, From>())
         {
-            if constexpr(has_adl_iter_assign_to<To, From>)
+            if constexpr(has_adl_iter_assign_from<To, From>)
             {
-                iter_assign_to(
+                iter_assign_from(
                     static_cast<To&&>(to), static_cast<From&&>(from));
             }
             else
@@ -68,73 +68,18 @@ namespace iter_assign_to_cpo
         }
         // clang-format on
     };
-} // namespace iter_assign_to_cpo
+} // namespace iter_assign_from_cpo
 
 inline namespace cpo
 {
-inline constexpr iter_assign_to_cpo::impl iter_assign_to{};
+inline constexpr iter_assign_from_cpo::impl iter_assign_from{};
 }
 
 template<typename To, typename From>
 concept iter_assignable_from = requires(To&& to, From&& from)
 {
-    stdf::iter_assign_to(static_cast<To&&>(to), static_cast<From&&>(from));
+    stdf::iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
 };
-
-// namespace iter_assign_to_cpo
-// {
-//     void iter_assign_to();
-
-//     // clang-format off
-//     template<typename To, typename From>
-//     concept has_adl_iter_assign_to = (class_or_enum<std::remove_cvref_t<To>>)
-//         && requires(To&& to, From&& from)
-//     {
-//         iter_assign_to(static_cast<To&&>(to), static_cast<From&&>(from));
-//     };
-//     // clang-format on
-
-//     struct impl
-//     {
-//     private:
-//         template<typename To, typename From>
-//         static constexpr bool is_noexcept()
-//         {
-//             if constexpr(has_adl_iter_assign_to<To, From>)
-//             {
-//                 return noexcept(
-//                     iter_assign_to(std::declval<To>(),
-//                     std::declval<From>()));
-//             }
-//             else
-//             {
-//                 return noexcept((*std::declval<To>()) =
-//                 std::declval<From>());
-//             }
-//         }
-
-//     public:
-//         template<typename To, typename From>
-//         constexpr void operator()(To&& to, From&& from) const
-//             noexcept(is_noexcept<To, From>())
-//         {
-//             if constexpr(has_adl_iter_assign_to<To, From>)
-//             {
-//                 iter_assign_to(
-//                     static_cast<To&&>(to), static_cast<From&&>(from));
-//             }
-//             else
-//             {
-//                 *to = static_cast<From&&>(from);
-//             }
-//         }
-//     };
-// } // namespace iter_assign_to_cpo
-
-// inline namespace cpo
-// {
-// inline constexpr iter_assign_to_cpo::impl iter_assign_to{};
-// }
 
 namespace iter_copy_from_cpo
 {
@@ -568,13 +513,13 @@ private:
         template<typename It, typename T>
         static constexpr bool is_noexcept_assignable() noexcept
         {
-            if constexpr(std::assignable_from<decltype(*std::declval<It>()), T>)
+            if constexpr(std::indirectly_writable<It, T>)
             {
                 return noexcept(*std::declval<It>() = std::declval<T&&>());
             }
             else
             {
-                return noexcept(stdf::iter_assign_to(
+                return noexcept(stdf::iter_assign_from(
                     std::declval<It>().current, std::declval<T&&>()));
             }
         }
@@ -585,7 +530,7 @@ private:
         requires(
             std::assignable_from<std::iter_reference_t<BaseIter>, T> ||
             stdf::iter_assignable_from<BaseIter, T&&>)
-        friend constexpr void iter_assign_to(const Iterator& it, T&& val)
+        friend constexpr void iter_assign_from(const Iterator& it, T&& val)
             noexcept(is_noexcept_assignable<Iterator, T>())
         {
             if constexpr(std::assignable_from<decltype(*it), T>)
@@ -594,7 +539,7 @@ private:
             }
             else
             {
-                stdf::iter_assign_to(it.current, std::forward<T>(val));
+                stdf::iter_assign_from(it.current, std::forward<T>(val));
             }
         }
         // clang-format on
@@ -1253,97 +1198,95 @@ constexpr Out copy_if(auto&& in, Out out, auto pred)
             if constexpr(iter_copy_from_cpo::has_adl_iter_copy_from<
                              decltype(first)>)
             {
-                stdf::iter_assign_to(out, iter_copy_from(first));
+                stdf::iter_assign_from(out, iter_copy_from(first));
             }
             else
             {
-                stdf::iter_assign_to(out, std::forward<decltype(x)>(x));
+                stdf::iter_assign_from(out, std::forward<decltype(x)>(x));
             }
 
             ++out;
         }
     }
 
-    //     return out;
-    // }
+    return out;
+}
 
-    // simple selection sort
-    template<
-        std::ranges::random_access_range R,
-        typename Cmp = std::ranges::less>
-    void sort(R && r, Cmp cmp = {})
+// simple selection sort
+template<std::ranges::random_access_range R, typename Cmp = std::ranges::less>
+void sort(R&& r, Cmp cmp = {})
+{
+    auto begin = std::ranges::begin(r);
+    auto end = std::ranges::end(r);
+
+    for(; begin != end; ++begin)
     {
-        auto begin = std::ranges::begin(r);
-        auto end = std::ranges::end(r);
+        auto min = begin;
 
-        for(; begin != end; ++begin)
+        for(auto next = std::ranges::next(begin); next != end; ++next)
         {
-            auto min = begin;
-
-            for(auto next = std::ranges::next(begin); next != end; ++next)
+            if(std::invoke(cmp, *next, *min))
             {
-                if(std::invoke(cmp, *next, *min))
+                min = next;
+            }
+        }
+        std::ranges::iter_swap(begin, min);
+    }
+}
+
+template<std::ranges::forward_range R, typename Pred>
+constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
+{
+    auto first = std::ranges::begin(r);
+    auto last = std::ranges::end(r);
+
+    for(; first != last; ++first)
+    {
+        if(std::invoke(pred, *first))
+        {
+            break;
+        }
+    }
+
+    if(first != last)
+    {
+        auto i = std::ranges::next(first);
+        for(; i != last; ++i)
+        {
+            auto&& x = *i;
+            if(!(std::invoke(pred, x)))
+            {
+                if constexpr(iter_move_from_cpo::has_adl_iter_move_from<
+                                 decltype(first)>)
                 {
-                    min = next;
+                    iter_assign_from(first, iter_move_from(i));
                 }
-            }
-            std::ranges::iter_swap(begin, min);
-        }
-    }
-
-    template<std::ranges::forward_range R, typename Pred>
-    constexpr std::ranges::borrowed_subrange_t<R> remove_if(R && r, Pred pred)
-    {
-        auto first = std::ranges::begin(r);
-        auto last = std::ranges::end(r);
-
-        for(; first != last; ++first)
-        {
-            if(std::invoke(pred, *first))
-            {
-                break;
-            }
-        }
-
-        if(first != last)
-        {
-            auto i = std::ranges::next(first);
-            for(; i != last; ++i)
-            {
-                auto&& x = *i;
-                if(!(std::invoke(pred, x)))
+                else
                 {
-                    if constexpr(iter_move_from_cpo::has_adl_iter_move_from<
-                                     decltype(first)>)
-                    {
-                        iter_assign_to(first, iter_move_from(i));
-                    }
-                    else
-                    {
-                        iter_assign_to(first, std::forward<decltype(x)>(x));
-                    }
-
-                    ++first;
+                    iter_assign_from(first, std::forward<decltype(x)>(x));
                 }
+
+                ++first;
             }
-            return {first, i};
         }
-
-        return {first, first};
+        return {first, i};
     }
 
-    // originally fill doesn't support projections at all
-    template<class T, std::ranges::output_range<const T&> R>
-    constexpr std::ranges::borrowed_iterator_t<R> fill(R && r, const T& value)
+    return {first, first};
+}
+
+// originally fill doesn't support projections at all
+template<class T, std::ranges::output_range<const T&> R>
+constexpr std::ranges::borrowed_iterator_t<R> fill(R&& r, const T& value)
+{
+    auto first = std::ranges::begin(r);
+    auto last = std::ranges::end(r);
+    for(; first != last; ++first)
     {
-        auto first = std::ranges::begin(r);
-        auto last = std::ranges::end(r);
-        for(; first != last; ++first)
-        {
-            iter_assign_to(first, value);
-        }
-        return first;
+        iter_assign_from(first, value);
     }
+    return first;
+}
 } // namespace stdf
 
 struct Y
@@ -1401,12 +1344,12 @@ void projection_test()
     assert((copied == Y{2, 20}));
     assert((moved == Y{1, 10}));
 
-    stdf::iter_assign_to(it1, moved);
-    stdf::iter_assign_to(it2, copied);
+    stdf::iter_assign_from(it1, moved);
+    stdf::iter_assign_from(it2, copied);
     assert((v[0] == Y{1, 10}));
     assert((v[1] == Y{2, 20}));
 
-    stdf::iter_assign_to(it1, copied);
+    stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 20}));
 }
 
@@ -1439,12 +1382,12 @@ void narrow_projection_test()
     assert(copied == 2);
     assert(moved == 1);
 
-    stdf::iter_assign_to(it1, moved);
-    stdf::iter_assign_to(it2, copied);
+    stdf::iter_assign_from(it1, moved);
+    stdf::iter_assign_from(it2, copied);
     assert((v[0] == Y{1, 10}));
     assert((v[1] == Y{2, 20}));
 
-    stdf::iter_assign_to(it1, copied);
+    stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 10}));
 }
 
@@ -1572,9 +1515,8 @@ void fill_test()
 
     // auto b = std::ranges::begin(pv);
     // using bt = decltype(b);
-    // static_assert(stdf::iter_assign_to_cpo::has_adl_iter_assign_to<bt, int>);
-    // bt::test_assign_to(b, 1);
-    // bt::test_assign_to(b, X{});
+    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from<bt,
+    // int>); bt::test_assign_to(b, 1); bt::test_assign_to(b, X{});
 
     stdf::fill(pv, 5);
     assert(
@@ -1585,7 +1527,7 @@ void fill_test()
         (v == std::vector<X>{{1, {10, 100}}, {1, {10, 100}}, {1, {10, 100}}}));
 }
 
-void iter_assign_to_test()
+void iter_assign_from_test()
 {
     using namespace stdf::views;
 
@@ -1594,35 +1536,37 @@ void iter_assign_to_test()
 
     auto b = std::ranges::begin(pv);
     using bt = decltype(b);
-    // static_assert(stdf::iter_assign_to_cpo::has_adl_iter_assign_to2<bt,
+    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from2<bt,
     // int>);
 
     // static_assert(requires
     //               {
-    //                   stdf::iter_assign_to(b, 1);
+    //                   stdf::iter_assign_from(b, 1);
     //               });
-    // static_assert(stdf::iter_assign_to_cpo::has_adl_iter_assign_to2<bt, X>);
-    // *b = 1;
-    stdf::iter_assign_to(b, 1);
-    stdf::iter_assign_to(b, stdf::iter_copy_from(b));
+    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from2<bt,
+    // X>); *b = 1;
+    stdf::iter_assign_from(b, 1);
+    stdf::iter_assign_from(b, stdf::iter_copy_from(b));
 
     static_assert(stdf::iter_assignable_from<bt, int>);
     static_assert(stdf::iter_assignable_from<bt, X>);
     static_assert(!stdf::iter_assignable_from<bt, Y>);
-    // stdf::iter_assign_to(b, Y{});
+    // stdf::iter_assign_from(b, Y{});
 }
 
 // TODO
 // specify noexcept-ness, looks like Iterator's and CPO share the common
 // is_noexcept() functionality, I think we need to combine it
-// rename iter_assign_to() to iter_assign_from()
 // better algo implementations
 // move `get_iter_category/concept()` to the `detail` namespace
 // check concepts, I guess that iter_assing_to() must be sfinae friendly.
 // yes, it will be required for indirectly_writable.
 // update/add concepts and use them to constrain provided algorithms
-// Can we eliminate iter_assign_to() if there's not adl version?
-// this can save yet another operator*() call.
+// Can we eliminate iter_assign_from() if there's no adl version?
+// this can save yet another operator*() call. It's possible but it's needed
+// only in case when we first read from iterator and then want to assign to it
+// directly, like rewrite.
+// check iter_copy/move_from() return type, it must be sfinae-friendly
 int main()
 {
     projection_test();
@@ -1631,7 +1575,7 @@ int main()
     sort_test();
     remove_if_test();
     fill_test();
-    iter_assign_to_test();
+    iter_assign_from_test();
 
     return 0;
 }
