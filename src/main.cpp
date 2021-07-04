@@ -1117,8 +1117,21 @@ private:
 };
 } // namespace views
 
-template<typename Out>
-constexpr Out copy_if(auto&& in, Out out, auto pred)
+// concepts --------------------------------------------------------------------
+
+template<typename In, typename Out>
+concept iter_copyable =
+    std::indirectly_readable<In> && stdf::iter_assignable_from<
+        Out,
+        decltype(stdf::iter_copy_from(std::declval<In>()))>;
+
+template<
+    std::ranges::input_range R,
+    std::weakly_incrementable O,
+    std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
+requires stdf::iter_copyable<std::ranges::iterator_t<R>, O>
+constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
+    copy_if(R&& in, O out, Pred pred)
 {
     auto first = std::ranges::begin(in);
     auto last = std::ranges::end(in);
@@ -1140,8 +1153,7 @@ constexpr Out copy_if(auto&& in, Out out, auto pred)
             ++out;
         }
     }
-
-    return out;
+    return {std::move(first), std::move(out)};
 }
 
 // simple selection sort
@@ -1317,6 +1329,9 @@ void projection_test()
 
     stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 20}));
+
+    stdf::iter_assign_from(it1, 1);
+    assert((v[0] == Y{1, 20}));
 }
 
 void narrow_projection_test()
@@ -1538,6 +1553,11 @@ void replace_if_test()
 
 // TODO
 // update/add concepts and use them to constrain provided algorithms
+// existing indirectly_readabe/writable/copyable are OK for pointers but
+// iterators are more than pointers, we need separate concepts for them.
+// we can use indirectly_readable because we don't change how we read from
+// iterators
+// indirectly_writable transforms to iter_assignable_from.
 int main()
 {
     projection_test();
