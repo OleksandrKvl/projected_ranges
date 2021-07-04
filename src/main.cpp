@@ -1545,33 +1545,6 @@ void fill_test()
         (v == std::vector<X>{{1, {10, 100}}, {1, {10, 100}}, {1, {10, 100}}}));
 }
 
-void iter_assign_from_test()
-{
-    using namespace stdf::views;
-
-    std::vector<X> v{{1, {10, 100}}, {2, {20, 200}}, {3, {30, 300}}};
-    auto pv = v | projection(&X::x);
-
-    auto b = std::ranges::begin(pv);
-    using bt = decltype(b);
-    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from2<bt,
-    // int>);
-
-    // static_assert(requires
-    //               {
-    //                   stdf::iter_assign_from(b, 1);
-    //               });
-    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from2<bt,
-    // X>); *b = 1;
-    stdf::iter_assign_from(b, 1);
-    stdf::iter_assign_from(b, stdf::iter_copy_from(b));
-
-    static_assert(stdf::iter_assignable_from<bt, int>);
-    static_assert(stdf::iter_assignable_from<bt, X>);
-    static_assert(!stdf::iter_assignable_from<bt, Y>);
-    // stdf::iter_assign_from(b, Y{});
-}
-
 void replace_if_test()
 {
     using namespace stdf::views;
@@ -1601,7 +1574,6 @@ int main()
     sort_test();
     remove_if_test();
     fill_test();
-    iter_assign_from_test();
     replace_if_test();
 
     return 0;
