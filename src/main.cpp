@@ -498,13 +498,13 @@ private:
         }
 
         // TODO: do we need const reference here?
-        friend constexpr decltype(auto)
+        friend constexpr decltype(iter_copy_from(std::declval<BaseIter>()))
             iter_copy_from(const Iterator& it) noexcept
         {
             return iter_copy_from(it.current);
         }
 
-        friend constexpr decltype(auto)
+        friend constexpr decltype(iter_move_from(std::declval<BaseIter>()))
             iter_move_from(const Iterator& it) noexcept
         {
             return iter_move_from(it.current);
@@ -1566,7 +1566,6 @@ void iter_assign_from_test()
 // this can save yet another operator*() call. It's possible but it's needed
 // only in case when we first read from iterator and then want to assign to it
 // directly, like rewrite.
-// check iter_copy/move_from() return type, it must be sfinae-friendly
 int main()
 {
     projection_test();
