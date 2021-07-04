@@ -1522,10 +1522,21 @@ void iter_assign_from_test()
 
 void replace_if_test()
 {
+    using namespace stdf::views;
+
+    std::vector<X> v{{1, {10, 100}}, {2, {20, 200}}, {3, {30, 300}}};
+
+    stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, 0);
+    assert(
+        (v == std::vector<X>{{0, {10, 100}}, {0, {20, 200}}, {3, {30, 300}}}));
+
+    // this is possible because `projection` allows to assign both
+    // value_type(int) and "root type"(X). `narrow_projection` doesn't allow it
+    stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, X{0, {0, 0}});
+    assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
 // TODO
-// better algo implementations
 // update/add concepts and use them to constrain provided algorithms
 int main()
 {
