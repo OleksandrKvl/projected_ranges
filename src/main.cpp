@@ -1252,7 +1252,15 @@ constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
     return {first, first};
 }
 
-// originally fill doesn't support projections at all
+template<class I, class T>
+concept output_iterator =
+    std::input_or_output_iterator<I> && indirectly_writable<I, T>;
+
+template<class R, class T>
+concept output_range =
+    std::ranges::range<R> && output_iterator<std::ranges::iterator_t<R>, T>;
+
+// originally, fill doesn't support projections at all
 template<class T, std::ranges::output_range<const T&> R>
 constexpr std::ranges::borrowed_iterator_t<R> fill(R&& r, const T& value)
 {
