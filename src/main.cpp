@@ -511,39 +511,15 @@ private:
             return iter_move_from(it.current);
         }
 
-        template<typename It, typename T>
-        static constexpr bool is_noexcept_assignable() noexcept
-        {
-            if constexpr(std::indirectly_writable<It, T>)
-            {
-                return noexcept(*std::declval<It>() = std::declval<T&&>());
-            }
-            else
-            {
-                return noexcept(stdf::iter_assign_from(
-                    std::declval<It>().current, std::declval<T&&>()));
-            }
-        }
-
-        // XXX
-        // clang-format off
         template<typename T>
-        requires(
-            std::assignable_from<std::iter_reference_t<BaseIter>, T> ||
-            stdf::iter_assignable_from<BaseIter, T&&>)
-        friend constexpr void iter_assign_from(const Iterator& it, T&& val)
-            noexcept(is_noexcept_assignable<Iterator, T>())
+        requires stdf::iter_assignable_from<BaseIter, T&&>
+        friend constexpr void
+            iter_assign_from(const Iterator& it, T&& val) noexcept(
+                noexcept(stdf::iter_assign_from(
+                    std::declval<BaseIter>(), std::declval<T&&>())))
         {
-            if constexpr(std::assignable_from<decltype(*it), T>)
-            {
-                *it = std::forward<T>(val);
-            }
-            else
-            {
-                stdf::iter_assign_from(it.current, std::forward<T>(val));
-            }
+            stdf::iter_assign_from(it.current, std::forward<T>(val));
         }
-        // clang-format on
 
         constexpr root_type_t root() const noexcept
         {
@@ -1243,6 +1219,40 @@ constexpr std::ranges::borrowed_iterator_t<R> fill(R&& r, const T& value)
     }
     return first;
 }
+
+// clang-format off
+template<
+    std::ranges::input_range R,
+    typename T,
+    std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
+requires stdf::iter_assignable_from<
+    typename std::ranges::iterator_t<R>, const T&>
+constexpr std::ranges::borrowed_iterator_t<R>
+    replace_if(R&& r, Pred pred, const T& new_value)
+{
+    auto first = std::ranges::begin(r);
+    auto last = std::ranges::end(r);
+    for(; first != last; ++first)
+    {
+        auto&& val = *first;
+        if(pred(val))
+        {
+            if constexpr(iter_assign_from_cpo::has_adl_iter_assign_from<
+                             std::ranges::iterator_t<R>,
+                             T>)
+            {
+                stdf::iter_assign_from(first, new_value);
+            }
+            else
+            {
+                val = new_value;
+            }
+        }
+    }
+
+    return first;
+}
+// clang-format on
 } // namespace stdf
 
 struct Y
@@ -1510,18 +1520,13 @@ void iter_assign_from_test()
     // stdf::iter_assign_from(b, Y{});
 }
 
+void replace_if_test()
+{
+}
+
 // TODO
-// specify noexcept-ness, looks like Iterator's and CPO share the common
-// is_noexcept() functionality, I think we need to combine it
 // better algo implementations
-// move `get_iter_category/concept()` to the `detail` namespace
-// check concepts, I guess that iter_assing_to() must be sfinae friendly.
-// yes, it will be required for indirectly_writable.
 // update/add concepts and use them to constrain provided algorithms
-// Can we eliminate iter_assign_from() if there's no adl version?
-// this can save yet another operator*() call. It's possible but it's needed
-// only in case when we first read from iterator and then want to assign to it
-// directly, like rewrite.
 int main()
 {
     projection_test();
@@ -1531,6 +1536,7 @@ int main()
     remove_if_test();
     fill_test();
     iter_assign_from_test();
+    replace_if_test();
 
     return 0;
 }
