@@ -14,42 +14,101 @@
 
 namespace stdf
 {
+namespace detail
+{
+template<bool Const, typename T>
+using maybe_const_t = std::conditional_t<Const, const T, T>;
+
+template<typename T>
+using with_ref = T&;
+
+template<typename T>
+concept can_reference = requires
+{
+    typename with_ref<T>;
+};
+
 template<typename T>
 concept class_or_enum =
     std::is_class_v<T> || std::is_union_v<T> || std::is_enum_v<T>;
 
+template<typename Range>
+inline constexpr auto get_iter_concept()
+{
+    if constexpr(std::ranges::random_access_range<Range>)
+    {
+        return std::random_access_iterator_tag{};
+    }
+    else if constexpr(std::ranges::bidirectional_range<Range>)
+    {
+        return std::bidirectional_iterator_tag{};
+    }
+    else if constexpr(std::ranges::forward_range<Range>)
+    {
+        return std::forward_iterator_tag{};
+    }
+    else
+    {
+        return std::input_iterator_tag{};
+    }
+}
+
+template<typename BaseRange, typename BaseIter, typename Fp>
+inline constexpr auto get_iter_cat()
+{
+    using Res =
+        std::invoke_result_t<Fp&, std::ranges::range_reference_t<BaseRange>>;
+    if constexpr(std::is_lvalue_reference_v<Res>)
+    {
+        using Cat = typename std::iterator_traits<BaseIter>::iterator_category;
+        if constexpr(std::derived_from<Cat, std::contiguous_iterator_tag>)
+        {
+            return std::random_access_iterator_tag{};
+        }
+        else
+        {
+            return Cat{};
+        }
+    }
+    else
+    {
+        return std::input_iterator_tag{};
+    }
+}
+} // namespace detail
+
 namespace iter_assign_from_cpo
 {
-    void iter_assign_from();
+void iter_assign_from();
 
-    // clang-format off
+// clang-format off
     template<typename To, typename From>
-    concept has_adl_iter_assign_from = (class_or_enum<std::remove_cvref_t<To>>) &&
+    concept has_adl_iter_assign_from = (detail::class_or_enum<std::remove_cvref_t<To>>) &&
         requires(To&& to, From&& from)
         {
             iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
         };
-    // clang-format on
+// clang-format on
 
-    struct impl
+struct impl
+{
+private:
+    template<typename To, typename From>
+    static constexpr bool is_noexcept()
     {
-    private:
-        template<typename To, typename From>
-        static constexpr bool is_noexcept()
+        if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            if constexpr(has_adl_iter_assign_from<To, From>)
-            {
-                return noexcept(
-                    iter_assign_from(std::declval<To>(), std::declval<From>()));
-            }
-            else
-            {
-                return noexcept((*std::declval<To>()) = std::declval<From>());
-            }
+            return noexcept(
+                iter_assign_from(std::declval<To>(), std::declval<From>()));
         }
+        else
+        {
+            return noexcept((*std::declval<To>()) = std::declval<From>());
+        }
+    }
 
-    public:
-        // clang-format off
+public:
+    // clang-format off
         template<typename To, typename From>
         requires (has_adl_iter_assign_from<To, From> ||
             std::indirectly_writable<To, From>)
@@ -66,8 +125,8 @@ namespace iter_assign_from_cpo
                 *to = static_cast<From&&>(from);
             }
         }
-        // clang-format on
-    };
+    // clang-format on
+};
 } // namespace iter_assign_from_cpo
 
 inline namespace cpo
@@ -87,7 +146,7 @@ namespace iter_copy_from_cpo
 
     // clang-format off
 template<typename From>
-concept has_adl_iter_copy_from = (class_or_enum<std::remove_cvref_t<From>>)
+concept has_adl_iter_copy_from = (detail::class_or_enum<std::remove_cvref_t<From>>)
     && requires(From&& from)
 {
     // TODO: check whether it's OK to cast to rvalue
@@ -155,7 +214,7 @@ void iter_move_from();
 
 // clang-format off
 template<typename From>
-concept has_adl_iter_move_from = (class_or_enum<std::remove_cvref_t<From>>)
+concept has_adl_iter_move_from = (detail::class_or_enum<std::remove_cvref_t<From>>)
     && requires(From&& from)
 {
     iter_move_from(static_cast<From&&>(from));
@@ -217,20 +276,6 @@ inline constexpr iter_move_from_cpo::impl iter_move_from{};
 }
 
 //------------------------------------------------------------------------------
-namespace detail
-{
-template<bool Const, typename T>
-using maybe_const_t = std::conditional_t<Const, const T, T>;
-
-template<typename T>
-using with_ref = T&;
-
-template<typename T>
-concept can_reference = requires
-{
-    typename with_ref<T>;
-};
-} // namespace detail
 
 template<std::ranges::input_range Range, std::copy_constructible Fp>
 requires std::ranges::view<Range> && std::is_object_v<Fp> &&
@@ -254,51 +299,6 @@ private:
         using ParentView = detail::maybe_const_t<IsConst, projection_view>;
         using BaseRange = detail::maybe_const_t<IsConst, Range>;
 
-        static constexpr auto get_iter_concept()
-        {
-            if constexpr(std::ranges::random_access_range<Range>)
-            {
-                return std::random_access_iterator_tag{};
-            }
-            else if constexpr(std::ranges::bidirectional_range<Range>)
-            {
-                return std::bidirectional_iterator_tag{};
-            }
-            else if constexpr(std::ranges::forward_range<Range>)
-            {
-                return std::forward_iterator_tag{};
-            }
-            else
-            {
-                return std::input_iterator_tag{};
-            }
-        }
-
-        static constexpr auto get_iter_cat()
-        {
-            using Res = std::
-                invoke_result_t<Fp&, std::ranges::range_reference_t<BaseRange>>;
-            if constexpr(std::is_lvalue_reference_v<Res>)
-            {
-                using Cat =
-                    typename std::iterator_traits<BaseIter>::iterator_category;
-                if constexpr(std::derived_from<
-                                 Cat,
-                                 std::contiguous_iterator_tag>)
-                {
-                    return std::random_access_iterator_tag{};
-                }
-                else
-                {
-                    return Cat{};
-                }
-            }
-            else
-            {
-                return std::input_iterator_tag{};
-            }
-        }
-
         using BaseIter = std::ranges::iterator_t<BaseRange>;
 
         BaseIter current{};
@@ -321,8 +321,9 @@ private:
         };
 
     public:
-        using iterator_concept = decltype(get_iter_concept());
-        using iterator_category = decltype(get_iter_cat());
+        using iterator_concept = decltype(detail::get_iter_concept<Range>());
+        using iterator_category =
+            decltype(detail::get_iter_cat<BaseRange, BaseIter, Fp>());
         using value_type = std::remove_cvref_t<std::invoke_result_t<
             Fp&,
             std::ranges::range_reference_t<BaseRange>>>;
@@ -781,60 +782,15 @@ private:
     private:
         using Parent = detail::maybe_const_t<IsConst, narrow_projection_view>;
         using Base = detail::maybe_const_t<IsConst, Vp>;
-
-        static constexpr auto get_iter_concept()
-        {
-            if constexpr(std::ranges::random_access_range<Vp>)
-            {
-                return std::random_access_iterator_tag{};
-            }
-            else if constexpr(std::ranges::bidirectional_range<Vp>)
-            {
-                return std::bidirectional_iterator_tag{};
-            }
-            else if constexpr(std::ranges::forward_range<Vp>)
-            {
-                return std::forward_iterator_tag{};
-            }
-            else
-            {
-                return std::input_iterator_tag{};
-            }
-        }
-
-        static constexpr auto get_iter_cat()
-        {
-            using Res =
-                std::invoke_result_t<Fp&, std::ranges::range_reference_t<Base>>;
-            if constexpr(std::is_lvalue_reference_v<Res>)
-            {
-                using Cat =
-                    typename std::iterator_traits<BaseIter>::iterator_category;
-                if constexpr(std::derived_from<
-                                 Cat,
-                                 std::contiguous_iterator_tag>)
-                {
-                    return std::random_access_iterator_tag{};
-                }
-                else
-                {
-                    return Cat{};
-                }
-            }
-            else
-            {
-                return std::input_iterator_tag{};
-            }
-        }
-
         using BaseIter = std::ranges::iterator_t<Base>;
 
         BaseIter current = BaseIter();
         Parent* parent{};
 
     public:
-        using iterator_concept = decltype(get_iter_concept());
-        using iterator_category = decltype(get_iter_cat());
+        using iterator_concept = decltype(detail::get_iter_concept<Vp>());
+        using iterator_category =
+            decltype(detail::get_iter_cat<Base, BaseIter, Fp>());
         using value_type = std::remove_cvref_t<
             std::invoke_result_t<Fp&, std::ranges::range_reference_t<Base>>>;
         using difference_type = std::ranges::range_difference_t<Base>;
