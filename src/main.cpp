@@ -83,12 +83,13 @@ namespace iter_assign_from_cpo
 void iter_assign_from();
 
 // clang-format off
-    template<typename To, typename From>
-    concept has_adl_iter_assign_from = (detail::class_or_enum<std::remove_cvref_t<To>>) &&
-        requires(To&& to, From&& from)
-        {
-            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
-        };
+template<typename To, typename From>
+concept has_adl_iter_assign_from = 
+    detail::class_or_enum<std::remove_cvref_t<To>> &&
+    requires(To&& to, From&& from)
+    {
+        iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+    };
 // clang-format on
 
 struct impl
@@ -136,6 +137,10 @@ inline constexpr iter_assign_from_cpo::impl iter_assign_from{};
 }
 
 template<typename To, typename From>
+concept has_adl_iter_assign_from =
+    iter_assign_from_cpo::has_adl_iter_assign_from<To, From>;
+
+template<typename To, typename From>
 concept iter_assignable_from = requires(To&& to, From&& from)
 {
     stdf::iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
@@ -146,12 +151,13 @@ namespace iter_copy_from_cpo
     void iter_copy_from();
 
     // clang-format off
-template<typename From>
-concept has_adl_iter_copy_from = (detail::class_or_enum<std::remove_cvref_t<From>>)
-    && requires(From&& from)
-{
-    iter_copy_from(static_cast<From&&>(from));
-};
+    template<typename From>
+    concept has_adl_iter_copy_from =
+        detail::class_or_enum<std::remove_cvref_t<From>> &&
+        requires(From&& from)
+        {
+            iter_copy_from(static_cast<From&&>(from));
+        };
     // clang-format on
 
     struct impl
@@ -208,72 +214,81 @@ inline namespace cpo
 inline constexpr iter_copy_from_cpo::impl iter_copy_from{};
 }
 
+template<typename From>
+concept has_adl_iter_copy_from =
+    iter_copy_from_cpo::has_adl_iter_copy_from<From>;
+
 namespace iter_move_from_cpo
 {
-void iter_move_from();
+    void iter_move_from();
 
-// clang-format off
-template<typename From>
-concept has_adl_iter_move_from = (detail::class_or_enum<std::remove_cvref_t<From>>)
-    && requires(From&& from)
-{
-    iter_move_from(static_cast<From&&>(from));
-};
-// clang-format on
-
-struct impl
-{
-private:
+    // clang-format off
     template<typename From>
-    static constexpr bool is_noexcept()
-    {
-        if constexpr(has_adl_iter_move_from<From>)
+    concept has_adl_iter_move_from = 
+        detail::class_or_enum<std::remove_cvref_t<From>> &&
+        requires(From&& from)
         {
-            return noexcept(iter_move_from(std::declval<From>()));
-        }
-        else
-        {
-            return noexcept(std::ranges::iter_move(std::declval<From>()));
-        }
-    }
+            iter_move_from(static_cast<From&&>(from));
+        };
+    // clang-format on
 
-    template<typename From>
-    struct result
+    struct impl
     {
-        using type = decltype(std::ranges::iter_move(std::declval<From>()));
+    private:
+        template<typename From>
+        static constexpr bool is_noexcept()
+        {
+            if constexpr(has_adl_iter_move_from<From>)
+            {
+                return noexcept(iter_move_from(std::declval<From>()));
+            }
+            else
+            {
+                return noexcept(std::ranges::iter_move(std::declval<From>()));
+            }
+        }
+
+        template<typename From>
+        struct result
+        {
+            using type = decltype(std::ranges::iter_move(std::declval<From>()));
+        };
+
+        template<typename From>
+        requires has_adl_iter_move_from<From>
+        struct result<From>
+        {
+            using type = decltype(iter_move_from(std::declval<From>()));
+        };
+
+        template<typename From>
+        using result_t = typename result<From>::type;
+
+    public:
+        template<typename From>
+        constexpr result_t<From> operator()(From&& from) const
+            noexcept(is_noexcept<From>())
+        {
+            if constexpr(has_adl_iter_move_from<From>)
+            {
+                return iter_move_from(static_cast<From&&>(from));
+            }
+            else
+            {
+                return std::ranges::iter_move(from);
+            }
+        }
     };
-
-    template<typename From>
-    requires has_adl_iter_move_from<From>
-    struct result<From>
-    {
-        using type = decltype(iter_move_from(std::declval<From>()));
-    };
-
-    template<typename From>
-    using result_t = typename result<From>::type;
-
-public:
-    template<typename From>
-    constexpr result_t<From> operator()(From&& from) const
-        noexcept(is_noexcept<From>())
-    {
-        if constexpr(has_adl_iter_move_from<From>)
-        {
-            return iter_move_from(static_cast<From&&>(from));
-        }
-        else
-        {
-            return std::ranges::iter_move(from);
-        }
-    }
-};
 } // namespace iter_move_from_cpo
 
 inline namespace cpo
 {
 inline constexpr iter_move_from_cpo::impl iter_move_from{};
 }
+
+template<typename From>
+concept has_adl_iter_move_from =
+    iter_move_from_cpo::has_adl_iter_move_from<From>;
 
 //------------------------------------------------------------------------------
 
@@ -1142,8 +1157,7 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
         auto&& x = *first;
         if(std::invoke(pred, x))
         {
-            if constexpr(iter_copy_from_cpo::has_adl_iter_copy_from<
-                             decltype(first)>)
+            if constexpr(has_adl_iter_copy_from<decltype(first)>)
             {
                 stdf::iter_assign_from(out, iter_copy_from(first));
             }
@@ -1230,8 +1244,7 @@ constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
             auto&& x = *i;
             if(!(std::invoke(pred, x)))
             {
-                if constexpr(iter_move_from_cpo::has_adl_iter_move_from<
-                                 decltype(first)>)
+                if constexpr(has_adl_iter_move_from<decltype(first)>)
                 {
                     iter_assign_from(first, iter_move_from(i));
                 }
@@ -1286,9 +1299,8 @@ constexpr std::ranges::borrowed_iterator_t<R>
         auto&& val = *first;
         if(pred(val))
         {
-            if constexpr(iter_assign_from_cpo::has_adl_iter_assign_from<
-                             std::ranges::iterator_t<R>,
-                             T>)
+            if constexpr(has_adl_iter_assign_from<
+                std::ranges::iterator_t<R>,T>)
             {
                 stdf::iter_assign_from(first, new_value);
             }
@@ -1566,6 +1578,7 @@ void replace_if_test()
 // iterators are more than pointers, we need separate concepts for them.
 // we can use indirectly_readable because we don't change how we read from
 // iterators
+// make has_adl_* public because potential clients will need to use it
 int main()
 {
     projection_test();
