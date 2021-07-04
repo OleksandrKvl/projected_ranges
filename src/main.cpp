@@ -1208,7 +1208,10 @@ void sort(R&& r, Cmp cmp = {})
     }
 }
 
-template<std::ranges::forward_range R, typename Pred>
+template<
+    std::ranges::forward_range R,
+    std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
+requires permutable<std::ranges::iterator_t<R>>
 constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
 {
     auto first = std::ranges::begin(r);
