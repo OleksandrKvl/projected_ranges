@@ -109,24 +109,57 @@ private:
         }
     }
 
+    template<typename To, typename D, typename From>
+    static constexpr bool is_noexcept2()
+    {
+        if constexpr(has_adl_iter_assign_from<To, From>)
+        {
+            return noexcept(
+                iter_assign_from(std::declval<To>(), std::declval<From>()));
+        }
+        else
+        {
+            return noexcept((std::declval<D>()) = std::declval<From>());
+        }
+    }
+
 public:
     // clang-format off
-        template<typename To, typename From>
-        requires (has_adl_iter_assign_from<To, From> ||
-            std::indirectly_writable<To, From>)
-        constexpr void operator()(To&& to, From&& from) const
-            noexcept(is_noexcept<To, From>())
+    template<typename To, typename From>
+    requires (has_adl_iter_assign_from<To, From> ||
+        std::indirectly_writable<To, From>)
+    constexpr void operator()(To&& to, From&& from) const
+        noexcept(is_noexcept<To, From>())
+    {
+        if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            if constexpr(has_adl_iter_assign_from<To, From>)
-            {
-                iter_assign_from(
-                    static_cast<To&&>(to), static_cast<From&&>(from));
-            }
-            else
-            {
-                *to = static_cast<From&&>(from);
-            }
+            iter_assign_from(
+                static_cast<To&&>(to), static_cast<From&&>(from));
         }
+        else
+        {
+            *to = static_cast<From&&>(from);
+        }
+    }
+    // clang-format on
+
+    // clang-format off
+    template<typename To, typename D, typename From>
+    requires (has_adl_iter_assign_from<To, From> ||
+        std::indirectly_writable<To, From>)
+    constexpr void operator()(To&& to, D&& dereferenced, From&& from) const
+        noexcept(is_noexcept2<To, D, From>())
+    {
+        if constexpr(has_adl_iter_assign_from<To, From>)
+        {
+            iter_assign_from(
+                static_cast<To&&>(to), static_cast<From&&>(from));
+        }
+        else
+        {
+            dereferenced = static_cast<From&&>(from);
+        }
+    }
     // clang-format on
 };
 } // namespace iter_assign_from_cpo
@@ -135,10 +168,6 @@ inline namespace cpo
 {
 inline constexpr iter_assign_from_cpo::impl iter_assign_from{};
 }
-
-template<typename To, typename From>
-concept has_adl_iter_assign_from =
-    iter_assign_from_cpo::has_adl_iter_assign_from<To, From>;
 
 template<typename To, typename From>
 concept iter_assignable_from = requires(To&& to, From&& from)
@@ -175,6 +204,18 @@ namespace iter_copy_from_cpo
                 return noexcept(*std::declval<From>());
             }
         }
+        template<typename From>
+        static constexpr bool is_noexcept2()
+        {
+            if constexpr(has_adl_iter_copy_from<From>)
+            {
+                return noexcept(iter_copy_from(std::declval<From>()));
+            }
+            else
+            {
+                return true;
+            }
+        }
 
         template<typename From>
         struct result
@@ -206,6 +247,20 @@ namespace iter_copy_from_cpo
                 return *from;
             }
         }
+
+        template<typename From, typename D>
+        constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
+            noexcept(is_noexcept2<From>())
+        {
+            if constexpr(has_adl_iter_copy_from<From>)
+            {
+                return iter_copy_from(static_cast<From&&>(from));
+            }
+            else
+            {
+                return std::forward<D>(dereferenced);
+            }
+        }
     };
 } // namespace iter_copy_from_cpo
 
@@ -214,15 +269,11 @@ inline namespace cpo
 inline constexpr iter_copy_from_cpo::impl iter_copy_from{};
 }
 
-template<typename From>
-concept has_adl_iter_copy_from =
-    iter_copy_from_cpo::has_adl_iter_copy_from<From>;
-
 namespace iter_move_from_cpo
 {
-    void iter_move_from();
+void iter_move_from();
 
-    // clang-format off
+// clang-format off
     template<typename From>
     concept has_adl_iter_move_from = 
         detail::class_or_enum<std::remove_cvref_t<From>> &&
@@ -230,65 +281,88 @@ namespace iter_move_from_cpo
         {
             iter_move_from(static_cast<From&&>(from));
         };
-    // clang-format on
+// clang-format on
 
-    struct impl
+struct impl
+{
+private:
+    template<typename From>
+    static constexpr bool is_noexcept()
     {
-    private:
-        template<typename From>
-        static constexpr bool is_noexcept()
+        if constexpr(has_adl_iter_move_from<From>)
         {
-            if constexpr(has_adl_iter_move_from<From>)
-            {
-                return noexcept(iter_move_from(std::declval<From>()));
-            }
-            else
-            {
-                return noexcept(std::ranges::iter_move(std::declval<From>()));
-            }
+            return noexcept(iter_move_from(std::declval<From>()));
         }
-
-        template<typename From>
-        struct result
+        else
         {
-            using type = decltype(std::ranges::iter_move(std::declval<From>()));
-        };
-
-        template<typename From>
-        requires has_adl_iter_move_from<From>
-        struct result<From>
-        {
-            using type = decltype(iter_move_from(std::declval<From>()));
-        };
-
-        template<typename From>
-        using result_t = typename result<From>::type;
-
-    public:
-        template<typename From>
-        constexpr result_t<From> operator()(From&& from) const
-            noexcept(is_noexcept<From>())
-        {
-            if constexpr(has_adl_iter_move_from<From>)
-            {
-                return iter_move_from(static_cast<From&&>(from));
-            }
-            else
-            {
-                return std::ranges::iter_move(from);
-            }
+            return noexcept(std::ranges::iter_move(std::declval<From>()));
         }
+    }
+
+    template<typename From>
+    static constexpr bool is_noexcept2()
+    {
+        if constexpr(has_adl_iter_move_from<From>)
+        {
+            return noexcept(iter_move_from(std::declval<From>()));
+        }
+        else
+        {
+            return true;
+        }
+    }
+
+    template<typename From>
+    struct result
+    {
+        using type = decltype(std::ranges::iter_move(std::declval<From>()));
     };
+
+    template<typename From>
+    requires has_adl_iter_move_from<From>
+    struct result<From>
+    {
+        using type = decltype(iter_move_from(std::declval<From>()));
+    };
+
+    template<typename From>
+    using result_t = typename result<From>::type;
+
+public:
+    template<typename From>
+    constexpr result_t<From> operator()(From&& from) const
+        noexcept(is_noexcept<From>())
+    {
+        if constexpr(has_adl_iter_move_from<From>)
+        {
+            return iter_move_from(static_cast<From&&>(from));
+        }
+        else
+        {
+            return std::ranges::iter_move(from);
+        }
+    }
+
+    template<typename From, typename D>
+    constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
+        noexcept(is_noexcept2<From>())
+    {
+        if constexpr(has_adl_iter_move_from<From>)
+        {
+            return iter_move_from(static_cast<From&&>(from));
+        }
+        else
+        {
+            return std::move(dereferenced);
+        }
+    }
+};
 } // namespace iter_move_from_cpo
 
 inline namespace cpo
 {
 inline constexpr iter_move_from_cpo::impl iter_move_from{};
 }
-
-template<typename From>
-concept has_adl_iter_move_from =
-    iter_move_from_cpo::has_adl_iter_move_from<From>;
 
 //------------------------------------------------------------------------------
 
@@ -1157,14 +1231,8 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
         auto&& x = *first;
         if(std::invoke(pred, x))
         {
-            if constexpr(has_adl_iter_copy_from<decltype(first)>)
-            {
-                stdf::iter_assign_from(out, iter_copy_from(first));
-            }
-            else
-            {
-                stdf::iter_assign_from(out, std::forward<decltype(x)>(x));
-            }
+            iter_assign_from(
+                out, iter_copy_from(first, std::forward<decltype(x)>(x)));
 
             ++out;
         }
@@ -1244,14 +1312,8 @@ constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
             auto&& x = *i;
             if(!(std::invoke(pred, x)))
             {
-                if constexpr(has_adl_iter_move_from<decltype(first)>)
-                {
-                    iter_assign_from(first, iter_move_from(i));
-                }
-                else
-                {
-                    iter_assign_from(first, std::forward<decltype(x)>(x));
-                }
+                iter_assign_from(
+                    first, iter_move_from(i, std::forward<decltype(x)>(x)));
 
                 ++first;
             }
@@ -1299,15 +1361,16 @@ constexpr std::ranges::borrowed_iterator_t<R>
         auto&& val = *first;
         if(pred(val))
         {
-            if constexpr(has_adl_iter_assign_from<
-                std::ranges::iterator_t<R>,T>)
-            {
-                stdf::iter_assign_from(first, new_value);
-            }
-            else
-            {
-                val = new_value;
-            }
+            stdf::iter_assign_from(first, val, new_value);
+            // if constexpr(has_adl_iter_assign_from<
+            //     std::ranges::iterator_t<R>,T>)
+            // {
+            //     stdf::iter_assign_from(first, new_value);
+            // }
+            // else
+            // {
+            //     val = new_value;
+            // }
         }
     }
 
@@ -1578,7 +1641,7 @@ void replace_if_test()
 // iterators are more than pointers, we need separate concepts for them.
 // we can use indirectly_readable because we don't change how we read from
 // iterators
-// make has_adl_* public because potential clients will need to use it
+// Leander's example can also be solved with zip-view + projection
 int main()
 {
     projection_test();
