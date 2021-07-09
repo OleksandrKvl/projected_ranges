@@ -283,6 +283,18 @@ void iter_move_from();
         };
 // clang-format on
 
+void iter_move();
+
+// clang-format off
+    template<typename From>
+    concept has_adl_iter_move = 
+        detail::class_or_enum<std::remove_cvref_t<From>> &&
+        requires(From&& from)
+        {
+            iter_move(static_cast<From&&>(from));
+        };
+// clang-format on
+
 struct impl
 {
 private:
@@ -302,7 +314,7 @@ private:
     template<typename From>
     static constexpr bool is_noexcept2()
     {
-        if constexpr(has_adl_iter_move_from<From>)
+        if constexpr(has_adl_iter_move_from<From> || has_adl_iter_move<From>)
         {
             return noexcept(iter_move_from(std::declval<From>()));
         }
@@ -347,7 +359,7 @@ public:
     constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
         noexcept(is_noexcept2<From>())
     {
-        if constexpr(has_adl_iter_move_from<From>)
+        if constexpr(has_adl_iter_move_from<From> || has_adl_iter_move<From>)
         {
             return iter_move_from(static_cast<From&&>(from));
         }
@@ -1385,11 +1397,6 @@ struct Y
     int b;
 
     auto operator<=>(const Y&) const = default;
-
-    friend std::ostream& operator<<(std::ostream& os, const Y& v)
-    {
-        return os << "(" << v.a << ", " << v.b << ")";
-    }
 };
 
 struct X
@@ -1398,11 +1405,6 @@ struct X
     Y y;
 
     auto operator<=>(const X&) const = default;
-
-    friend std::ostream& operator<<(std::ostream& os, const X& v)
-    {
-        return os << "(" << v.x << ", " << v.y << ")";
-    }
 };
 
 void projection_test()
