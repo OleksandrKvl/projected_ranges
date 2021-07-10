@@ -1486,15 +1486,6 @@ void narrow_projection_test()
     assert((v[0] == Y{2, 10}));
 }
 
-void print(auto&& coll)
-{
-    for(const auto& item : coll)
-    {
-        std::cout << item << ", ";
-    }
-    std::cout << '\n';
-}
-
 template<auto N>
 struct less_than
 {
