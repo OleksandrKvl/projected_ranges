@@ -1374,15 +1374,6 @@ constexpr std::ranges::borrowed_iterator_t<R>
         if(pred(val))
         {
             stdf::iter_assign_from(first, val, new_value);
-            // if constexpr(has_adl_iter_assign_from<
-            //     std::ranges::iterator_t<R>,T>)
-            // {
-            //     stdf::iter_assign_from(first, new_value);
-            // }
-            // else
-            // {
-            //     val = new_value;
-            // }
         }
     }
 
