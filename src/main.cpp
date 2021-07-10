@@ -109,7 +109,7 @@ private:
         }
     }
 
-    template<typename To, typename D, typename From>
+    template<typename To, typename From, typename D>
     static constexpr bool is_noexcept2()
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
@@ -144,11 +144,11 @@ public:
     // clang-format on
 
     // clang-format off
-    template<typename To, typename D, typename From>
+    template<typename To, typename From, typename D>
     requires (has_adl_iter_assign_from<To, From> ||
         std::indirectly_writable<To, From>)
-    constexpr void operator()(To&& to, D&& dereferenced, From&& from) const
-        noexcept(is_noexcept2<To, D, From>())
+    constexpr void operator()(To&& to, From&& from, D&& dereferenced) const
+        noexcept(is_noexcept2<To, From, D>())
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
@@ -1367,7 +1367,7 @@ constexpr std::ranges::borrowed_iterator_t<R>
         auto&& val = *first;
         if(pred(val))
         {
-            stdf::iter_assign_from(first, val, new_value);
+            stdf::iter_assign_from(first, new_value, val);
         }
     }
 
