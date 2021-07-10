@@ -585,12 +585,6 @@ private:
             return x.current - y.current;
         }
 
-        friend constexpr decltype(auto)
-            iter_move(const Iterator& i) noexcept(noexcept(*i))
-        {
-            return std::move(*i);
-        }
-
         friend constexpr void
             iter_swap(const Iterator& x, const Iterator& y) noexcept(
                 noexcept(std::ranges::iter_swap(x.current, y.current))) requires
@@ -1626,6 +1620,7 @@ void replace_if_test()
 // we can use indirectly_readable because we don't change how we read from
 // iterators
 // Leander's example can also be solved with zip-view + projection
+// make naming consistent
 int main()
 {
     projection_test();
