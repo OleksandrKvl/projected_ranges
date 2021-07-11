@@ -6,15 +6,6 @@ target_sources(${EXE_NAME}
     main.cpp
 )
 
-find_package(fmt REQUIRED)
-find_package(range-v3 REQUIRED)
-
-target_link_libraries(${EXE_NAME}
-    PRIVATE
-    fmt::fmt
-    range-v3::range-v3)
-
-
 # Add compiler flags
 if(MSVC)
     target_compile_options(${EXE_NAME} PRIVATE /W3 /WX)

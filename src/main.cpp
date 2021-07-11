@@ -8,11 +8,6 @@
 #include <concepts>
 #include <cassert>
 
-#include <fmt/core.h>
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <fmt/ostream.h>
-
 namespace stdf
 {
 namespace detail
