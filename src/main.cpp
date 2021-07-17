@@ -151,7 +151,7 @@ public:
     {
         if constexpr(has_adl_iter_move<From>)
         {
-            return iter_move_root(static_cast<From&&>(from));
+            return iter_move(static_cast<From&&>(from));
         }
         else if constexpr(std::is_lvalue_reference_v<
                               std::iter_reference_t<From>>)
@@ -170,7 +170,7 @@ public:
     {
         if constexpr(has_adl_iter_move<From>)
         {
-            return iter_move_root(static_cast<From&&>(from));
+            return iter_move(static_cast<From&&>(from));
         }
         else if constexpr(std::is_lvalue_reference_v<
                               std::iter_reference_t<From>>)
@@ -1943,15 +1943,10 @@ void iter_swap_test()
 // because we need to customize `iter_move()` just to handle return by-value
 // case. I think that iter_move() should do that for us. Maybe it already does.
 // We should do the same in iter_move_root()
-// Most of custom iter_move_root() are unneeded, default implementation should
-// work as is
+
 // Intersting, looks like std::views::transfrom() which returns by-value is not
 // writable!
-// should we add dereferenced-version for iter_swap()? It also can dereference.
-// BTW, is existing iter_swap() is OK now? It uses iter_move(). Now it should
-// use iter_move_root() and also have dereferenced version. Or  maybe it should
-// be a new function. We can't call it `iter_swap_from`, maybe we should replace
-// `_from` with `_root` for each CPO.
+
 // test new iter_move();
 // in `is_noexcept()`, why don't we use declval<T&&>?
 // test updated iter_move_root();
@@ -1960,10 +1955,6 @@ void iter_swap_test()
 // looks reasonable. What if operator*() returns by value? Then we simply cannot
 // assign using default implementation. I'm not sure about perfect forwarding.
 // What if operator*() returns rvalue reference?
-// iter_swap() is not done
-// I'm not sure that ranges::swap() should take precedence over manual swap.
-// What if refernce_t is not a reference? We still can swap it but it will be a
-// no-op. Look OK, but more tests are needed.
 
 // global problems: new concepts
 int main()
