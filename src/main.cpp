@@ -499,13 +499,31 @@ template<typename T>
 using range_root_rvalue_reference_t =
     iter_root_rvalue_reference_t<std::ranges::iterator_t<T>>;
 
+template<typename Out, typename T>
+concept indirectly_writable = iter_assignable_from<Out, T>;
+
+template<typename In, typename Out>
+concept indirectly_movable = std::indirectly_readable<In> &&
+    indirectly_writable<Out, iter_root_rvalue_reference_t<In>>;
+
+// We need iter_assign_from(out, iter_move_root(in)); to be valid
+// and remove_cvref_t<decltype(iter_move_root(in))> should be movable
+// clang-format off
+template<typename In, typename Out>
+concept iter_movable_storable =
+    indirectly_movable<In, Out> &&
+    std::movable<
+        std::remove_cvref_t<iter_root_rvalue_reference_t<Out>>
+    >;
+// clang-format on
+
 // improved `std::ranges::iter_swap()` with dereferenced version
 namespace iter_swap_cpo
 {
-template<typename It1, typename It2>
-void iter_swap(It1, It2) = delete;
+    template<typename It1, typename It2>
+    void iter_swap(It1, It2) = delete;
 
-// clang-format off
+    // clang-format off
 template<typename It1, typename It2>
 concept has_adl_iter_swap = 
     (detail::class_or_enum<std::remove_cvref_t<It1>> ||
@@ -514,126 +532,154 @@ concept has_adl_iter_swap =
     {
         iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
     };
-// clang-format on
+    // clang-format on
 
-struct impl
-{
-private:
-    template<class It1, class It2>
-    constexpr iter_root_t<It1>
-        iter_exchange_move(It1&& it1, It2&& it2) noexcept(
-            noexcept(iter_root_t<It1>(iter_move_root(it1))) && noexcept(
-                iter_assign_from(it1, iter_move_root(it2))))
+    struct impl
     {
-        iter_root_t<It1> old_value(iter_move_root(it1));
-        iter_assign_from(it1, iter_move_root(it2));
-        return old_value;
-    }
+    private:
+        template<class It1, class It2>
+        static constexpr iter_root_t<It1>
+            iter_exchange_move(It1&& it1, It2&& it2) noexcept(
+                noexcept(iter_root_t<It1>(iter_move_root(it1))) && noexcept(
+                    iter_assign_from(it1, iter_move_root(it2))))
+        {
+            iter_root_t<It1> old_value(iter_move_root(it1));
+            iter_assign_from(it1, iter_move_root(it2));
+            return old_value;
+        }
 
-    template<typename It1, typename It2, typename D1, typename D2>
-    constexpr iter_root_t<It1>
-        iter_exchange_move(It1&& it1, It2&& it2, D1&& d1, D2&& d2) noexcept(
-            noexcept(iter_root_t<It1>(iter_move_root(it1, d1))) && noexcept(
-                iter_assign_from(it1, iter_move_root(it2, d2), d1)))
-    {
-        iter_root_t<It1> old_value(iter_move_root(it1, d1));
-        iter_assign_from(it1, iter_move_root(it2, d2), d1);
-        return old_value;
-    }
+        template<typename It1, typename It2, typename D1, typename D2>
+        static constexpr iter_root_t<It1>
+            iter_exchange_move(It1&& it1, It2&& it2, D1&& d1, D2&& d2) noexcept(
+                noexcept(iter_root_t<It1>(iter_move_root(it1, d1))) && noexcept(
+                    iter_assign_from(it1, iter_move_root(it2, d2), d1)))
+        {
+            iter_root_t<It1> old_value(iter_move_root(it1, d1));
+            iter_assign_from(it1, iter_move_root(it2, d2), d1);
+            return old_value;
+        }
 
-    template<typename It1, typename It2>
-    static constexpr bool is_noexcept()
-    {
-        if constexpr(has_adl_iter_swap<It1, It2>)
+        template<typename It1, typename It2>
+        static constexpr bool is_noexcept()
         {
-            return noexcept(iter_swap(std::declval<It1>(), std::declval<It2>));
+            if constexpr(has_adl_iter_swap<It1, It2>)
+            {
+                return noexcept(
+                    iter_swap(std::declval<It1>(), std::declval<It2>));
+            }
+            else if constexpr(
+                std::indirectly_readable<It1> &&
+                std::indirectly_readable<It2> &&
+                std::swappable_with<
+                    std::iter_reference_t<It1>,
+                    std::iter_reference_t<It2>>)
+            {
+                return noexcept(std::ranges::swap(
+                    *std::declval<It1>(), *std::declval<It2>()));
+            }
+            else
+            {
+                return noexcept(iter_assign_from(
+                    std::declval<It1>(),
+                    iter_exchange_move(
+                        std::declval<It2>(), std::declval<It1>())));
+            }
         }
-        else
-        {
-            return true;
-            // TODO: not implemented
-            // return noexcept(iter_move(std::declval<From>()));
-        }
-    }
 
-    template<typename It1, typename It2, typename D1, typename D2>
-    static constexpr bool is_noexcept2()
-    {
-        return true;
-        // TODO: not implemented
-        // if constexpr(has_adl_iter_swap<It1, It2>)
-        // {
-        //     return noexcept(iter_swap(std::declval<It1>(),
-        //     std::declval<It2>));
-        // }
-        // else
-        // {
-        //     // FIX
-        //     return noexcept(iter_move(std::declval<It1>(),
-        //     std::declval<D>()));
-        // }
-    }
+        template<typename It1, typename It2, typename D1, typename D2>
+        static constexpr bool is_noexcept2()
+        {
+            if constexpr(has_adl_iter_swap<It1, It2>)
+            {
+                return noexcept(
+                    iter_swap(std::declval<It1>(), std::declval<It2>));
+            }
+            else if constexpr(
+                std::indirectly_readable<It1> &&
+                std::indirectly_readable<It2> &&
+                std::swappable_with<
+                    std::iter_reference_t<It1>,
+                    std::iter_reference_t<It2>>)
+            {
+                return noexcept(
+                    std::ranges::swap(std::declval<D1>(), std::declval<D2>()));
+            }
+            else
+            {
+                return noexcept(iter_assign_from(
+                    std::declval<It1>(),
+                    iter_exchange_move(
+                        std::declval<It2>(),
+                        std::declval<It1>(),
+                        std::declval<D1>(),
+                        std::declval<D2>()),
+                    std::declval<D1>()));
+            }
+        }
 
-public:
-    template<typename It1, typename It2>
-    constexpr void operator()(It1&& it1, It2&& it2) const
-        noexcept(is_noexcept<It1, It2>()) requires(
-            has_adl_iter_swap<It1, It2> ||
-            (std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
-             std::swappable_with<
-                 std::iter_reference_t<It1>,
-                 std::iter_reference_t<It2>>) ||
-            // TODO: indirectly_movable_storable is wrong here!
-            (std::indirectly_movable_storable<It1, It2> &&
-             std::indirectly_movable_storable<It2, It1>))
-    {
-        if constexpr(has_adl_iter_swap<It1, It2>)
+    public:
+        template<typename It1, typename It2>
+        constexpr void operator()(It1&& it1, It2&& it2) const
+            noexcept(is_noexcept<It1, It2>()) requires(
+                has_adl_iter_swap<It1, It2> ||
+                (std::indirectly_readable<It1> &&
+                 std::indirectly_readable<It2> &&
+                 std::swappable_with<
+                     std::iter_reference_t<It1>,
+                     std::iter_reference_t<It2>>) ||
+                (iter_movable_storable<It1, It2> &&
+                 iter_movable_storable<It2, It1>))
         {
-            iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+            if constexpr(has_adl_iter_swap<It1, It2>)
+            {
+                iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+            }
+            else if constexpr(
+                std::indirectly_readable<It1> &&
+                std::indirectly_readable<It2> &&
+                std::swappable_with<
+                    std::iter_reference_t<It1>,
+                    std::iter_reference_t<It2>>)
+            {
+                std::ranges::swap(*it1, *it2);
+            }
+            else
+            {
+                iter_assign_from(it1, iter_exchange_move(it2, it1));
+            }
         }
-        else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
-            std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
-        {
-            std::ranges::swap(*it1, *it2);
-        }
-        else
-        {
-            iter_assign_from(it1, iter_exchange_move(it2, it1));
-        }
-    }
 
-    template<typename It1, typename It2, typename D1, typename D2>
-    constexpr void operator()(It1&& it1, It2&& it2, D1&& d1, D2&& d2) const
-        noexcept(is_noexcept2<It1, It2, D1, D2>()) requires(
-            has_adl_iter_swap<It1, It2> ||
-            (std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
-             std::swappable_with<
-                 std::iter_reference_t<It1>,
-                 std::iter_reference_t<It2>>) ||
-            (std::indirectly_movable_storable<It1, It2> &&
-             std::indirectly_movable_storable<It2, It1>))
-    {
-        if constexpr(has_adl_iter_swap<It1, It2>)
+        template<typename It1, typename It2, typename D1, typename D2>
+        constexpr void operator()(It1&& it1, It2&& it2, D1&& d1, D2&& d2) const
+            noexcept(is_noexcept2<It1, It2, D1, D2>()) requires(
+                has_adl_iter_swap<It1, It2> ||
+                (std::indirectly_readable<It1> &&
+                 std::indirectly_readable<It2> &&
+                 std::swappable_with<
+                     std::iter_reference_t<It1>,
+                     std::iter_reference_t<It2>>) ||
+                (iter_movable_storable<It1, It2> &&
+                 iter_movable_storable<It2, It1>))
         {
-            iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+            if constexpr(has_adl_iter_swap<It1, It2>)
+            {
+                iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+            }
+            else if constexpr(
+                std::indirectly_readable<It1> &&
+                std::indirectly_readable<It2> &&
+                std::swappable_with<
+                    std::iter_reference_t<It1>,
+                    std::iter_reference_t<It2>>)
+            {
+                std::ranges::swap(static_cast<D1&&>(d1), static_cast<D2&&>(d2));
+            }
+            else
+            {
+                iter_assign_from(it1, iter_exchange_move(it2, it1, d1, d2), d1);
+            }
         }
-        else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
-            std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
-        {
-            std::ranges::swap(static_cast<D1&&>(d1), static_cast<D2&&>(d2));
-        }
-        else
-        {
-            iter_assign_from(it1, iter_exchange_move(it2, it1, d1, d2), d1);
-        }
-    }
-};
+    };
 } // namespace iter_swap_cpo
 
 inline namespace cpo
@@ -1477,9 +1523,6 @@ private:
 
 //------------------------------------------------------------------------------
 
-template<typename Out, typename T>
-concept indirectly_writable = stdf::iter_assignable_from<Out, T>;
-
 // clang-format off
 template<typename In, typename Out>
 concept indirectly_copyable =
@@ -1513,26 +1556,10 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     return {std::move(first), std::move(out)};
 }
 
-template<typename In, typename Out>
-concept indirectly_movable =
-    std::indirectly_readable<In> && stdf::indirectly_writable<
-        Out,
-        decltype(stdf::iter_move_root(std::declval<In>()))>;
-
-// We need iter_assign_from(out, iter_move_root(in)); to be valid
-// and remove_cvref_t<decltype(iter_move_root(in))> should be movable
-// clang-format off
-template<typename In, typename Out>
-concept indirectly_movable_storable =
-    indirectly_movable<In, Out> &&
-    std::movable<
-        std::remove_cvref_t<decltype(stdf::iter_move_root(std::declval<Out>()))>
-    >;
-// clang-format on
-
+// TODO: probable wrong, should take new iter_swap() into account
 template<typename I>
-concept permutable = std::forward_iterator<I> &&
-    indirectly_movable_storable<I, I> && std::indirectly_swappable<I>;
+concept permutable = std::forward_iterator<I> && iter_movable_storable<I, I> &&
+    std::indirectly_swappable<I>;
 
 template<typename I, typename R = std::ranges::less>
 concept sortable = permutable<I> && std::indirect_strict_weak_order<R, I>;
@@ -1878,6 +1905,29 @@ void replace_if_test()
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
+void iter_swap_test()
+{
+    using namespace stdf::views;
+
+    std::vector<int> v{1, 2, 3};
+    auto pv = v | narrow_projection(
+                      [](auto)
+                      {
+                          return 2;
+                      });
+
+    auto b = std::ranges::begin(pv);
+    auto b2 = b + 1;
+    // stdf::iter_swap(b, b2);
+    // std::cout << v[0] << ", " << v[1] << '\n';
+    using It1 = decltype(b);
+    // static_assert(
+    //     std::indirectly_readable<It1> && std::indirectly_readable<It1> &&
+    //     std::swappable_with<
+    //         std::iter_reference_t<It1>,
+    //         std::iter_reference_t<It1>>);
+}
+
 // TODO
 // existing indirectly_readabe/writable/copyable are OK for pointers but
 // iterators are more than pointers, we need separate concepts for them.
@@ -1911,10 +1961,16 @@ void replace_if_test()
 // assign using default implementation. I'm not sure about perfect forwarding.
 // What if operator*() returns rvalue reference?
 // iter_swap() is not done
+// I'm not sure that ranges::swap() should take precedence over manual swap.
+// What if refernce_t is not a reference? We still can swap it but it will be a
+// no-op. Look OK, but more tests are needed.
 
-// global problems: new concepts, iter_swap().
+// global problems: new concepts
 int main()
 {
+    iter_swap_test();
+    return 0;
+
     projection_test();
     narrow_projection_test();
     copy_if_test();
