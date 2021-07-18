@@ -451,7 +451,7 @@ public:
         }
         else
         {
-            return iter_move(from);
+            return iter_move(static_cast<From&&>(from));
         }
     }
 
@@ -499,22 +499,58 @@ template<typename T>
 using range_root_rvalue_reference_t =
     iter_root_rvalue_reference_t<std::ranges::iterator_t<T>>;
 
+// analog of std::indirectly_writable
+// clang-format off
 template<typename Out, typename T>
-concept indirectly_writable = iter_assignable_from<Out, T>;
+concept iter_writable = requires(Out&& o, T&& t)
+{
+    iter_assign_from(o, std::forward<T>(t));
+    iter_assign_from(std::forward<Out>(o), std::forward<T>(t));
+    // TODO: should work?
+    // iter_assign_from(const_cast<const Out&&>(o), std::forward<T>(t));
+    // iter_assign_from(const_cast<const Out&&>(std::forward<Out>(o)),
+    //     std::forward<T>(t));
+};
+// clang-format on
 
+// analog of std::indirectly_readable
+// clang-format off
+template<typename T>
+concept iter_root_readable = requires(const T it)
+{
+    typename iter_root_t<T>;
+    typename iter_root_reference_t<T>;
+    typename iter_root_rvalue_reference_t<T>;
+    { iter_copy_root(it) } -> std::same_as<iter_root_reference_t<T>>;
+    { iter_move_root(it) } -> std::same_as<iter_root_rvalue_reference_t<T>>;
+} &&
+std::common_reference_with<
+    iter_root_reference_t<T>&&, iter_root_t<T>&
+> &&
+std::common_reference_with<
+    iter_root_reference_t<T>&&, iter_root_rvalue_reference_t<T>&&
+> &&
+std::common_reference_with<
+    iter_root_rvalue_reference_t<T>&&, const iter_root_t<T>&
+>;
+// clang-format on
+
+// analog of std::indirectly_movable
 template<typename In, typename Out>
-concept indirectly_movable = std::indirectly_readable<In> &&
-    indirectly_writable<Out, iter_root_rvalue_reference_t<In>>;
+concept iter_root_movable = iter_root_readable<In> &&
+    iter_writable<Out, iter_root_rvalue_reference_t<In>>;
 
-// We need iter_assign_from(out, iter_move_root(in)); to be valid
-// and remove_cvref_t<decltype(iter_move_root(in))> should be movable
+// analog of std::indirectly_movable_storable
 // clang-format off
 template<typename In, typename Out>
 concept iter_movable_storable =
-    indirectly_movable<In, Out> &&
-    std::movable<
-        std::remove_cvref_t<iter_root_rvalue_reference_t<Out>>
-    >;
+    iter_root_movable<In, Out> &&
+    iter_writable<Out, iter_root_t<In>> &&
+    std::movable<iter_root_t<In>> &&
+    std::constructible_from<
+        iter_root_t<In>, iter_root_rvalue_reference_t<In>> &&
+    std::assignable_from<
+        iter_root_t<In>&, iter_root_rvalue_reference_t<In>>;
 // clang-format on
 
 // improved `std::ranges::iter_swap()` with dereferenced version
@@ -524,14 +560,14 @@ namespace iter_swap_cpo
     void iter_swap(It1, It2) = delete;
 
     // clang-format off
-template<typename It1, typename It2>
-concept has_adl_iter_swap = 
-    (detail::class_or_enum<std::remove_cvref_t<It1>> ||
-    detail::class_or_enum<std::remove_cvref_t<It2>>) &&
-    requires(It1&& it1, It2&& it2)
-    {
-        iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
-    };
+    template<typename It1, typename It2>
+    concept has_adl_iter_swap = 
+        (detail::class_or_enum<std::remove_cvref_t<It1>> ||
+        detail::class_or_enum<std::remove_cvref_t<It2>>) &&
+        requires(It1&& it1, It2&& it2)
+        {
+            iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+        };
     // clang-format on
 
     struct impl
@@ -565,7 +601,7 @@ concept has_adl_iter_swap =
             if constexpr(has_adl_iter_swap<It1, It2>)
             {
                 return noexcept(
-                    iter_swap(std::declval<It1>(), std::declval<It2>));
+                    iter_swap(std::declval<It1>(), std::declval<It2>()));
             }
             else if constexpr(
                 std::indirectly_readable<It1> &&
@@ -592,7 +628,7 @@ concept has_adl_iter_swap =
             if constexpr(has_adl_iter_swap<It1, It2>)
             {
                 return noexcept(
-                    iter_swap(std::declval<It1>(), std::declval<It2>));
+                    iter_swap(std::declval<It1>(), std::declval<It2>()));
             }
             else if constexpr(
                 std::indirectly_readable<It1> &&
@@ -686,6 +722,21 @@ inline namespace cpo
 {
 inline constexpr iter_swap_cpo::impl iter_swap{};
 }
+
+// analog of std::indirectly_swappable
+// clang-format off
+template< class I1, class I2 >
+concept iter_swappable =
+    iter_root_readable<I1> &&
+    iter_root_readable<I2> &&
+    requires(const I1 i1, const I2 i2) {
+        stdf::iter_swap(i1, i1);
+        stdf::iter_swap(i1, i2);
+        stdf::iter_swap(i2, i1);
+        stdf::iter_swap(i2, i2);
+    };
+// clang-format on
+
 //------------------------------------------------------------------------------
 
 template<std::ranges::input_range Range, std::copy_constructible Fp>
@@ -739,7 +790,7 @@ private:
             Fp&,
             std::ranges::range_reference_t<BaseRange>>>;
         using difference_type = std::ranges::range_difference_t<BaseRange>;
-        using root_type_t = typename root_type<BaseIter>::type;
+        using root_t = typename root_type<BaseIter>::type;
 
         Iterator() = default;
 
@@ -897,10 +948,10 @@ private:
 
         friend constexpr void
             iter_swap(const Iterator& x, const Iterator& y) noexcept(
-                noexcept(std::ranges::iter_swap(x.current, y.current))) requires
-            std::indirectly_swappable<BaseIter>
+                noexcept(stdf::iter_swap(x.current, y.current)))
+                requires stdf::iter_swappable<BaseIter, BaseIter>
         {
-            return std::ranges::iter_swap(x.current, y.current);
+            return stdf::iter_swap(x.current, y.current);
         }
 
         friend constexpr decltype(iter_copy_root(std::declval<BaseIter>()))
@@ -916,7 +967,7 @@ private:
         }
 
         template<typename T>
-        requires stdf::iter_assignable_from<BaseIter, T&&>
+        requires iter_assignable_from<BaseIter, T&&>
         friend constexpr void
             iter_assign_from(const Iterator& it, T&& val) noexcept(
                 noexcept(stdf::iter_assign_from(
@@ -925,7 +976,7 @@ private:
             stdf::iter_assign_from(it.current, std::forward<T>(val));
         }
 
-        constexpr root_type_t root() const noexcept
+        constexpr root_t root() const noexcept
         {
             if constexpr(requires
                          {
@@ -1329,6 +1380,14 @@ private:
             return x.current - y.current;
         }
 
+        template<typename T>
+        friend constexpr void iter_assign_from(const Iterator& it, T&& v)
+        requires(!std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>
+            && stdf::iter_assignable_from<BaseIter, T>)
+        {
+            stdf::iter_assign_from(it.current, std::forward<T>(v));
+        }
+
         constexpr auto root() const noexcept
         {
             if constexpr(requires
@@ -1523,20 +1582,19 @@ private:
 
 //------------------------------------------------------------------------------
 
+// analog of std::indirectly_copyable
 // clang-format off
 template<typename In, typename Out>
-concept indirectly_copyable =
-    std::indirectly_readable<In> &&
-    stdf::indirectly_writable<
-        Out,
-        decltype(stdf::iter_copy_root(std::declval<In>()))>;
+concept iter_root_copyable =
+    iter_root_readable<In> &&
+    iter_writable<Out, iter_root_t<In>>;
 // clang-format on
 
 template<
     std::ranges::input_range R,
     std::weakly_incrementable O,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires stdf::indirectly_copyable<std::ranges::iterator_t<R>, O>
+requires iter_root_copyable<std::ranges::iterator_t<R>, O>
 constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     copy_if(R&& in, O out, Pred pred)
 {
@@ -1556,17 +1614,23 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     return {std::move(first), std::move(out)};
 }
 
-// TODO: probable wrong, should take new iter_swap() into account
+// analog of std::permutable
+// clang-format off
 template<typename I>
-concept permutable = std::forward_iterator<I> && iter_movable_storable<I, I> &&
-    std::indirectly_swappable<I>;
+concept iter_permutable =
+    std::forward_iterator<I> &&
+    iter_movable_storable<I, I> &&
+    iter_swappable<I, I>;
+// clang-format on
 
+// analog of std::sortable
 template<typename I, typename R = std::ranges::less>
-concept sortable = permutable<I> && std::indirect_strict_weak_order<R, I>;
+concept iter_sortable = iter_permutable<I> &&
+    std::indirect_strict_weak_order<R, I>;
 
 // simple selection sort
 template<std::ranges::random_access_range R, typename Cmp = std::ranges::less>
-requires sortable<std::ranges::iterator_t<R>, Cmp>
+requires iter_sortable<std::ranges::iterator_t<R>, Cmp>
 void sort(R&& r, Cmp cmp = {})
 {
     auto begin = std::ranges::begin(r);
@@ -1590,7 +1654,7 @@ void sort(R&& r, Cmp cmp = {})
 template<
     std::ranges::forward_range R,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires permutable<std::ranges::iterator_t<R>>
+requires iter_permutable<std::ranges::iterator_t<R>>
 constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
 {
     auto first = std::ranges::begin(r);
@@ -1626,7 +1690,7 @@ constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
 
 template<class I, class T>
 concept output_iterator =
-    std::input_or_output_iterator<I> && indirectly_writable<I, T>;
+    std::input_or_output_iterator<I> && iter_writable<I, T>;
 
 template<class R, class T>
 concept output_range =
@@ -1650,7 +1714,7 @@ template<
     std::ranges::input_range R,
     typename T,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires indirectly_writable<std::ranges::iterator_t<R>, const T&>
+requires iter_writable<std::ranges::iterator_t<R>, const T&>
 constexpr std::ranges::borrowed_iterator_t<R>
     replace_if(R&& r, Pred pred, const T& new_value)
 {
@@ -1910,22 +1974,43 @@ void iter_swap_test()
     using namespace stdf::views;
 
     std::vector<int> v{1, 2, 3};
-    auto pv = v | narrow_projection(
-                      [](auto)
+    auto bv = std::ranges::begin(v);
+    auto pv = v | projection(   // works with narrow_
+                      [](const auto&)
                       {
+                        //   return v;
                           return 2;
                       });
 
     auto b = std::ranges::begin(pv);
-    auto b2 = b + 1;
+    // auto b2 = b + 1;
     // stdf::iter_swap(b, b2);
     // std::cout << v[0] << ", " << v[1] << '\n';
-    using It1 = decltype(b);
+    // using It1 = decltype(b);
+    // using It2 = It1;
     // static_assert(
     //     std::indirectly_readable<It1> && std::indirectly_readable<It1> &&
     //     std::swappable_with<
     //         std::iter_reference_t<It1>,
     //         std::iter_reference_t<It1>>);
+    
+    // static_assert(swap_test<It1, It2>);
+    // static_assert(stdf::iter_swap_cpo::has_adl_iter_swap<It1, It2>);
+    // static_assert(stdf::iter_swappable<It1, It2>);
+    // stdf::iter_swap(bv, bv);
+    
+    stdf::iter_swap(b, b);
+    // static_assert(is_noexcept3<It1, It2>());
+
+
+    // static_assert(stdf::iter_swappable<It1, It2>);
+//     static_assert(!(std::indirectly_readable<It1> &&
+//   std::indirectly_readable<It2> &&
+//   std::swappable_with<
+//   std::iter_reference_t<It1>,
+//   std::iter_reference_t<It2>>));
+
+//   static_assert((iter_movable_storable2<It1, It2>));
 }
 
 // TODO
@@ -1933,28 +2018,20 @@ void iter_swap_test()
 // iterators are more than pointers, we need separate concepts for them.
 // we can use indirectly_readable because we don't change how we read from
 // iterators
-// Leander's example can also be solved with zip-view + projection
-// make naming consistent
+// make naming consistent in projections
 // cleanup, remove useless comments
 // test with pure transformations which return by-value
-// is it even safe to cast temporary value to rvalue and return it? I'm not
-// sure that lifetime will be extended.
-// iter_move() also need to have dereferenced version but it's not possible
-// because we need to customize `iter_move()` just to handle return by-value
-// case. I think that iter_move() should do that for us. Maybe it already does.
-// We should do the same in iter_move_root()
-
-// Intersting, looks like std::views::transfrom() which returns by-value is not
-// writable!
-
-// test new iter_move();
+// test all CPOs
 // in `is_noexcept()`, why don't we use declval<T&&>?
-// test updated iter_move_root();
 // don't change existing concepts to avoid confusion. Rename them.
-// Use std::iter_reference_t instead of D in dereferenced versions? Yes, it
+// Use std::iter_reference_t instead of D in dereferenced versions? It
 // looks reasonable. What if operator*() returns by value? Then we simply cannot
 // assign using default implementation. I'm not sure about perfect forwarding.
 // What if operator*() returns rvalue reference?
+// use iterator_traits?
+// add indirectly_readable to algorithms because we still use oeprator*().
+// we need custom iter_assign_from() if iter_reference_t is not a reference.
+// test projection without it
 
 // global problems: new concepts
 int main()
