@@ -1969,76 +1969,21 @@ void replace_if_test()
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
-void iter_swap_test()
-{
-    using namespace stdf::views;
-
-    std::vector<int> v{1, 2, 3};
-    auto bv = std::ranges::begin(v);
-    auto pv = v | projection(   // works with narrow_
-                      [](const auto&)
-                      {
-                        //   return v;
-                          return 2;
-                      });
-
-    auto b = std::ranges::begin(pv);
-    // auto b2 = b + 1;
-    // stdf::iter_swap(b, b2);
-    // std::cout << v[0] << ", " << v[1] << '\n';
-    // using It1 = decltype(b);
-    // using It2 = It1;
-    // static_assert(
-    //     std::indirectly_readable<It1> && std::indirectly_readable<It1> &&
-    //     std::swappable_with<
-    //         std::iter_reference_t<It1>,
-    //         std::iter_reference_t<It1>>);
-    
-    // static_assert(swap_test<It1, It2>);
-    // static_assert(stdf::iter_swap_cpo::has_adl_iter_swap<It1, It2>);
-    // static_assert(stdf::iter_swappable<It1, It2>);
-    // stdf::iter_swap(bv, bv);
-    
-    stdf::iter_swap(b, b);
-    // static_assert(is_noexcept3<It1, It2>());
-
-
-    // static_assert(stdf::iter_swappable<It1, It2>);
-//     static_assert(!(std::indirectly_readable<It1> &&
-//   std::indirectly_readable<It2> &&
-//   std::swappable_with<
-//   std::iter_reference_t<It1>,
-//   std::iter_reference_t<It2>>));
-
-//   static_assert((iter_movable_storable2<It1, It2>));
-}
-
 // TODO
-// existing indirectly_readabe/writable/copyable are OK for pointers but
-// iterators are more than pointers, we need separate concepts for them.
-// we can use indirectly_readable because we don't change how we read from
-// iterators
 // make naming consistent in projections
 // cleanup, remove useless comments
 // test with pure transformations which return by-value
 // test all CPOs
 // in `is_noexcept()`, why don't we use declval<T&&>?
-// don't change existing concepts to avoid confusion. Rename them.
 // Use std::iter_reference_t instead of D in dereferenced versions? It
 // looks reasonable. What if operator*() returns by value? Then we simply cannot
 // assign using default implementation. I'm not sure about perfect forwarding.
 // What if operator*() returns rvalue reference?
 // use iterator_traits?
-// add indirectly_readable to algorithms because we still use oeprator*().
-// we need custom iter_assign_from() if iter_reference_t is not a reference.
-// test projection without it
-
-// global problems: new concepts
+// add indirectly_readable to algorithms because we still use operator*().
+// is it ok to forward<decltype(var)> if var is auto&& var; ??
 int main()
 {
-    iter_swap_test();
-    return 0;
-
     projection_test();
     narrow_projection_test();
     copy_if_test();
