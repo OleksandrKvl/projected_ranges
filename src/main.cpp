@@ -1394,6 +1394,16 @@ private:
             return x.current - y.current;
         }
 
+        // clang-format off
+        friend constexpr iter_root_reference_t<BaseIter>
+            iter_copy_root(const Iterator& it)
+            requires (!std::is_lvalue_reference_v<
+                std::iter_reference_t<Iterator>>)
+        {
+            return stdf::iter_copy_root(it.current);
+        }
+        // clang-format on
+
         template<typename T>
         friend constexpr void
             iter_assign_from(const Iterator& it, T&& v) requires(
@@ -1999,13 +2009,6 @@ void replace_if_test()
 // is it ok to forward<decltype(var)> if var is auto&& var; ??
 // neither of new CPOs will work if operator*() return by-value. Can it return
 // by rvalue-reference? It doesn't make any sense.
-// 1. Add hand-written CPO to both projections for cases when reference_t is not
-//      is_lvalue_reference_v.
-// 2. Constrain default CPO with is_lvalue_reference_v.
-// should iter_move_root rely on operator*() or iter_copy_root? the latter looks
-// better to me, it mimics how iter_move relies on operator*(). It's definitely
-// better because client can define only iter_copy_root and got valid
-// iter_move_root() automatically.
 int main()
 {
     projection_test();
