@@ -765,8 +765,7 @@ private:
     template<bool IsConst>
     class Sentinel;
 
-    // ITERATOR
-    //----------------------------------------------------------------
+    // ITERATOR ----------------------------------------------------------------
 
     template<bool IsConst>
     class Iterator
@@ -781,7 +780,7 @@ private:
         ParentView* parent{};
 
         template<typename It>
-        struct root_type
+        struct root_type_impl
         {
             using type = It;
         };
@@ -791,7 +790,7 @@ private:
         {
             it.root();
         }
-        struct root_type<It>
+        struct root_type_impl<It>
         {
             using type = decltype(std::declval<It>().root());
         };
@@ -804,7 +803,7 @@ private:
             Fp&,
             std::ranges::range_reference_t<BaseRange>>>;
         using difference_type = std::ranges::range_difference_t<BaseRange>;
-        using root_t = typename root_type<BaseIter>::type;
+        using root_type = typename root_type_impl<BaseIter>::type;
 
         Iterator() = default;
 
@@ -990,7 +989,7 @@ private:
             stdf::iter_assign_from(it.current, std::forward<T>(val));
         }
 
-        constexpr root_t root() const noexcept
+        constexpr root_type root() const noexcept
         {
             if constexpr(requires
                          {
@@ -1010,11 +1009,9 @@ private:
         template<bool>
         friend class Sentinel;
     };
-    // ITERATOR
-    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    // ITERATOR ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    // SENTINEL
-    // ----------------------------------------------------------------
+    // SENTINEL ----------------------------------------------------------------
     template<bool IsConst>
     class Sentinel
     {
@@ -1089,18 +1086,12 @@ private:
 
         friend Sentinel<!IsConst>;
     };
-    // SENTINEL
-    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    // SENTINEL ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    // DATA MEMBERS
-    //------------------------------------------------------------
     Range baseRange{};
     Fp fun;
-    // DATA MEMBERS
-    // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 public:
-    // VIEW INTERFACE
     projection_view() = default;
 
     constexpr projection_view(Range base, Fp fun)
@@ -1118,13 +1109,11 @@ public:
         return std::move(baseRange);
     }
 
-    // non-const begin()
     constexpr Iterator<false> begin()
     {
         return Iterator<false>{*this, std::ranges::begin(baseRange)};
     }
 
-    // const begin()
     constexpr Iterator<true> begin() const requires
         std::ranges::range<const Range> && std::regular_invocable<
             const Fp&,
@@ -1133,19 +1122,16 @@ public:
         return Iterator<true>{*this, std::ranges::begin(baseRange)};
     }
 
-    // non-const end(), returns Sentinel
     constexpr Sentinel<false> end()
     {
         return Sentinel<false>{std::ranges::end(baseRange)};
     }
 
-    // non-const common-range end(), returns Iterator
     constexpr Iterator<false> end() requires std::ranges::common_range<Range>
     {
         return Iterator<false>{*this, std::ranges::end(baseRange)};
     }
 
-    // const end(), returns Sentinel
     constexpr Sentinel<true> end() const requires
         std::ranges::range<const Range> && std::regular_invocable<
             const Fp&,
@@ -1154,7 +1140,6 @@ public:
         return Sentinel<true>{std::ranges::end(baseRange)};
     }
 
-    // const common-range end(), returns Iterator
     constexpr Iterator<true> end() const requires
         std::ranges::common_range<const Range> && std::regular_invocable<
             const Fp&,
@@ -1163,13 +1148,11 @@ public:
         return Iterator<true>{*this, std::ranges::end(baseRange)};
     }
 
-    // non-const size()
     constexpr auto size() requires std::ranges::sized_range<Range>
     {
         return std::ranges::size(baseRange);
     }
 
-    // const size()
     constexpr auto size() const requires std::ranges::sized_range<const Range>
     {
         return std::ranges::size(baseRange);
@@ -1940,14 +1923,7 @@ void remove_if_test()
     // `remove_if` would be dangling
     auto pv = v | projection(&X::x);
     auto removed = stdf::remove_if(pv, less_than<int{3}>{});
-    // auto pv = v | std::views::take(1) | projection(&X::y) |
-    // projection(&Y::a); auto removed = stdf::remove_if(pv,
-    // less_than<int{30}>{});
 
-    // next problem, the returned range is actually a range of two
-    // `projected_view<...>::Iterator`s and `std::vector::erase()` expects
-    // true vector iterators.
-    // Does it make sense for sentinel?
     v.erase(removed.begin().root(), removed.end().root());
     assert((v == std::vector<X>{{3, {30, 300}}}));
 
@@ -1962,11 +1938,6 @@ void fill_test()
 
     std::vector<X> v{{1, {10, 100}}, {2, {20, 200}}, {3, {30, 300}}};
     auto pv = v | projection(&X::x);
-
-    // auto b = std::ranges::begin(pv);
-    // using bt = decltype(b);
-    // static_assert(stdf::iter_assign_from_cpo::has_adl_iter_assign_from<bt,
-    // int>); bt::test_assign_to(b, 1); bt::test_assign_to(b, X{});
 
     stdf::fill(pv, 5);
     assert(
@@ -1988,7 +1959,7 @@ void replace_if_test()
         (v == std::vector<X>{{0, {10, 100}}, {0, {20, 200}}, {3, {30, 300}}}));
 
     // this is possible because `projection` allows to assign both
-    // value_type(int) and "root type"(X). `narrow_projection` doesn't allow it
+    // value_type(int) and root_type(X). `narrow_projection` doesn't allow it
     stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, X{0, {0, 0}});
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
@@ -2151,8 +2122,6 @@ void iter_move_test()
 }
 
 // TODO
-// make naming consistent in projections
-// cleanup, remove useless comments
 // test with pure transformations which return by-value
 // test all CPO-s, it's not clear to me how to properly test them
 // in `is_noexcept()`, why don't we use declval<T&&>?
