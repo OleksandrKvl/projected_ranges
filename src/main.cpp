@@ -830,9 +830,9 @@ private:
         }
 
         constexpr decltype(auto) operator*() const
-            noexcept(noexcept(std::invoke(parent->m_fun, *current)))
+            noexcept(noexcept(std::invoke(parent->fun, *current)))
         {
-            return std::invoke(parent->m_fun, *current);
+            return std::invoke(parent->fun, *current);
         }
 
         constexpr Iterator& operator++()
@@ -886,7 +886,7 @@ private:
         constexpr decltype(auto) operator[](difference_type n)
             const requires std::ranges::random_access_range<BaseRange>
         {
-            return std::invoke(parent->m_fun, current[n]);
+            return std::invoke(parent->fun, current[n]);
         }
 
         friend constexpr bool operator==(
@@ -1096,7 +1096,7 @@ private:
     // MEMBERS
     //------------------------------------------------------------
     Range m_base{};
-    Fp m_fun;
+    Fp fun;
     // DATA MEMBERS
     // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1105,7 +1105,7 @@ public:
     projection_view() = default;
 
     constexpr projection_view(Range base, Fp fun)
-        : m_base{std::move(base)}, m_fun{std::move(fun)}
+        : m_base{std::move(base)}, fun{std::move(fun)}
     {
     }
 
@@ -1264,9 +1264,9 @@ private:
         }
 
         constexpr decltype(auto) operator*() const
-            noexcept(noexcept(std::invoke(parent->m_fun, *current)))
+            noexcept(noexcept(std::invoke(parent->fun, *current)))
         {
-            return std::invoke(parent->m_fun, *current);
+            return std::invoke(parent->fun, *current);
         }
 
         constexpr Iterator& operator++()
@@ -1320,7 +1320,7 @@ private:
         constexpr decltype(auto) operator[](difference_type n)
             const requires std::ranges::random_access_range<Base>
         {
-            return std::invoke(parent->m_fun, current[n]);
+            return std::invoke(parent->fun, current[n]);
         }
 
         friend constexpr bool operator==(
@@ -1510,13 +1510,13 @@ private:
     };
 
     Vp m_base{};
-    Fp m_fun;
+    Fp fun;
 
 public:
     narrow_projection_view() = default;
 
     constexpr narrow_projection_view(Vp base, Fp fun)
-        : m_base(std::move(base)), m_fun(std::move(fun))
+        : m_base(std::move(base)), fun(std::move(fun))
     {
     }
 
