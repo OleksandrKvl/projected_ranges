@@ -156,11 +156,11 @@ public:
         else if constexpr(std::is_lvalue_reference_v<
                               std::iter_reference_t<From>>)
         {
-            return std::move(*from);
+            return std::move(*static_cast<From&&>(from));
         }
         else
         {
-            return *from;
+            return *static_cast<From&&>(from);
         }
     }
 
@@ -179,7 +179,7 @@ public:
         }
         else
         {
-            return dereferenced;
+            return static_cast<D&&>(dereferenced);
         }
     }
 };
@@ -1026,35 +1026,35 @@ private:
         constexpr std::ranges::range_difference_t<Base>
             distance_from(const Iterator<Const2>& i) const
         {
-            return m_end - i.current;
+            return end - i.current;
         }
 
         template<bool Const2>
         constexpr bool equal(const Iterator<Const2>& i) const
         {
-            return i.current == m_end;
+            return i.current == end;
         }
 
-        std::ranges::sentinel_t<Base> m_end{};
+        std::ranges::sentinel_t<Base> end{};
 
     public:
         Sentinel() = default;
 
         constexpr explicit Sentinel(std::ranges::sentinel_t<Base> end)
-            : m_end(end)
+            : end{end}
         {
         }
 
         constexpr Sentinel(Sentinel<!IsConst> i) requires IsConst
             && std::convertible_to<
                 std::ranges::sentinel_t<Range>,
-                std::ranges::sentinel_t<Base>> : m_end(std::move(i.m_end))
+                std::ranges::sentinel_t<Base>> : end(std::move(i.end))
         {
         }
 
         constexpr std::ranges::sentinel_t<Base> base() const
         {
-            return m_end;
+            return end;
         }
 
         template<bool Const2>
@@ -1445,35 +1445,35 @@ private:
         constexpr std::ranges::range_difference_t<Base>
             distance_from(const Iterator<Const2>& i) const
         {
-            return m_end - i.current;
+            return end - i.current;
         }
 
         template<bool Const2>
         constexpr bool equal(const Iterator<Const2>& i) const
         {
-            return i.current == m_end;
+            return i.current == end;
         }
 
-        std::ranges::sentinel_t<Base> m_end{};
+        std::ranges::sentinel_t<Base> end{};
 
     public:
         Sentinel() = default;
 
         constexpr explicit Sentinel(std::ranges::sentinel_t<Base> end)
-            : m_end(end)
+            : end{end}
         {
         }
 
         constexpr Sentinel(Sentinel<!IsConst> i) requires IsConst
             && std::convertible_to<
                 std::ranges::sentinel_t<Vp>,
-                std::ranges::sentinel_t<Base>> : m_end(std::move(i.m_end))
+                std::ranges::sentinel_t<Base>> : end(std::move(i.end))
         {
         }
 
         constexpr std::ranges::sentinel_t<Base> base() const
         {
-            return m_end;
+            return end;
         }
 
         template<bool Const2>
@@ -1994,11 +1994,168 @@ void replace_if_test()
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
+struct S
+{
+    int i;
+};
+
+template<
+    bool DerefByValue,
+    bool CustomIterMove = false,
+    bool CustomIterCopyRoot = false,
+    bool CustomIterMoveRoot = false,
+    bool CustomIterAssign = false,
+    bool CustomIterSwap = false>
+class iterator
+{
+public:
+    using value_type = int;
+    using root_type = S;
+
+    // clang-format off
+    value_type operator*() requires DerefByValue
+    {
+        deref_calls++;
+        return s.i;
+    }
+
+    value_type& operator*() requires(!DerefByValue)
+    {
+        deref_calls++;
+        return s.i;
+    }
+
+    friend value_type&& iter_move(iterator& it) requires CustomIterMove
+    {
+        iter_move_calls++;
+        return std::move(it.s.i);
+    }
+
+    friend root_type&
+        iter_copy_root(iterator& it) requires CustomIterCopyRoot
+    {
+        iter_copy_root_calls++;
+        return it.s;
+    }
+
+    friend root_type&&
+        iter_move_root(iterator& it) requires CustomIterMoveRoot
+    {
+        iter_move_root_calls++;
+        return std::move(it.s);
+    }
+
+    friend void iter_assign_from(const iterator& it, value_type& x) requires
+        CustomIterAssign
+    {
+        iter_assign_from_calls++;
+        return it.s = x;
+    }
+
+    friend void iter_swap(iterator it1, iterator it2) requires
+        CustomIterSwap
+    {
+        iter_swap_calls++;
+        return std::ranges::swap(it1.s, it2.s);
+    }
+    // clang-format on
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+        iter_move_calls = 0;
+        iter_copy_root_calls = 0;
+        iter_move_root_calls = 0;
+        iter_assign_from_calls = 0;
+        iter_swap_calls = 0;
+    }
+
+    static std::size_t get_deref_calls()
+    {
+        return deref_calls;
+    }
+
+    static std::size_t get_iter_move_calls()
+    {
+        return iter_move_calls;
+    }
+
+    static std::size_t get_iter_copy_root_calls()
+    {
+        return iter_copy_root_calls;
+    }
+
+    static std::size_t get_iter_move_root_calls()
+    {
+        return iter_move_root_calls;
+    }
+
+    static std::size_t get_iter_assign_from_calls()
+    {
+        return iter_assign_from_calls;
+    }
+
+    static std::size_t get_iter_swap_calls()
+    {
+        return iter_swap_calls;
+    }
+
+private:
+    S s;
+    static inline std::size_t deref_calls{};
+    static inline std::size_t iter_move_calls{};
+    static inline std::size_t iter_copy_root_calls{};
+    static inline std::size_t iter_move_root_calls{};
+    static inline std::size_t iter_assign_from_calls{};
+    static inline std::size_t iter_swap_calls{};
+};
+
+void iter_move_test()
+{
+    // test custom/default iter_move and dereferenced version. Also, return
+    // by-value/by-reference
+    // test return type of iter_move, test number of calls to move/copy.
+    // for each we need to test: that customized version is used,
+    // that value was correspondingly copied/moved only once
+    using by_ref_it_t = iterator<false>;
+    using by_val_it_t = iterator<true>;
+
+    static_assert(std::is_same_v<std::iter_value_t<by_ref_it_t>, int>);
+    static_assert(std::is_same_v<std::iter_reference_t<by_ref_it_t>, int&>);
+    static_assert(
+        std::is_same_v<std::iter_rvalue_reference_t<by_ref_it_t>, int&&>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_t<by_ref_it_t>,
+                  std::iter_value_t<by_ref_it_t>>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_reference_t<by_ref_it_t>,
+                  std::iter_reference_t<by_ref_it_t>>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_rvalue_reference_t<by_ref_it_t>,
+                  std::iter_rvalue_reference_t<by_ref_it_t>>);
+
+    static_assert(std::is_same_v<std::iter_value_t<by_val_it_t>, int>);
+    static_assert(std::is_same_v<std::iter_reference_t<by_val_it_t>, int>);
+    static_assert(
+        std::is_same_v<std::iter_rvalue_reference_t<by_val_it_t>, int>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_t<by_val_it_t>,
+                  std::iter_value_t<by_val_it_t>>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_reference_t<by_val_it_t>,
+                  std::iter_reference_t<by_val_it_t>>);
+    static_assert(std::is_same_v<
+                  stdf::iter_root_rvalue_reference_t<by_val_it_t>,
+                  std::iter_rvalue_reference_t<by_val_it_t>>);
+
+    by_ref_it_t by_ref_it;
+}
+
 // TODO
 // make naming consistent in projections
 // cleanup, remove useless comments
 // test with pure transformations which return by-value
-// test all CPOs
+// test all CPO-s, it's not clear to me how to properly test them
 // in `is_noexcept()`, why don't we use declval<T&&>?
 // Use std::iter_reference_t instead of D in dereferenced versions? It
 // looks reasonable. What if operator*() returns by value? Then we simply cannot
@@ -2007,10 +2164,23 @@ void replace_if_test()
 // use iterator_traits?
 // add indirectly_readable to algorithms because we still use operator*().
 // is it ok to forward<decltype(var)> if var is auto&& var; ??
-// neither of new CPOs will work if operator*() return by-value. Can it return
-// by rvalue-reference? It doesn't make any sense.
+// think what to do about iterator-based algorithms. Looks like we need
+// something like make_projected_iterator(it, proj). But I'm not sure about its
+// behavior, for example with whom it should be comparable. And also about
+// sentinel. It's strange that there's no function to convert iterator/sentinel
+// pair into a range and use range-based algorithm.
+
+// Line 531 // TODO: should work?
+// static_cast<T&&> vs std::forward<T>
+// use forward in iter_assign? actually, I guess it should be used everywhere.
+// check all CPO-s. iter_reference_t is implemented in terms of lvalue
+// reference. maybe iterators are not intended to be used as rvalue-s. What
+// could be the valid reason to use iterator as rvalue? don't test everything,
+// it's just a POC
 int main()
 {
+    iter_move_test();
+
     projection_test();
     narrow_projection_test();
     copy_if_test();
