@@ -1092,10 +1092,9 @@ private:
     // SENTINEL
     // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    // DATA
-    // MEMBERS
+    // DATA MEMBERS
     //------------------------------------------------------------
-    Range m_base{};
+    Range baseRange{};
     Fp fun;
     // DATA MEMBERS
     // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1105,24 +1104,24 @@ public:
     projection_view() = default;
 
     constexpr projection_view(Range base, Fp fun)
-        : m_base{std::move(base)}, fun{std::move(fun)}
+        : baseRange{std::move(base)}, fun{std::move(fun)}
     {
     }
 
     constexpr Range base() const& requires std::copy_constructible<Range>
     {
-        return m_base;
+        return baseRange;
     }
 
     constexpr Range base() &&
     {
-        return std::move(m_base);
+        return std::move(baseRange);
     }
 
     // non-const begin()
     constexpr Iterator<false> begin()
     {
-        return Iterator<false>{*this, std::ranges::begin(m_base)};
+        return Iterator<false>{*this, std::ranges::begin(baseRange)};
     }
 
     // const begin()
@@ -1131,19 +1130,19 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Iterator<true>{*this, std::ranges::begin(m_base)};
+        return Iterator<true>{*this, std::ranges::begin(baseRange)};
     }
 
     // non-const end(), returns Sentinel
     constexpr Sentinel<false> end()
     {
-        return Sentinel<false>{std::ranges::end(m_base)};
+        return Sentinel<false>{std::ranges::end(baseRange)};
     }
 
     // non-const common-range end(), returns Iterator
     constexpr Iterator<false> end() requires std::ranges::common_range<Range>
     {
-        return Iterator<false>{*this, std::ranges::end(m_base)};
+        return Iterator<false>{*this, std::ranges::end(baseRange)};
     }
 
     // const end(), returns Sentinel
@@ -1152,7 +1151,7 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Sentinel<true>{std::ranges::end(m_base)};
+        return Sentinel<true>{std::ranges::end(baseRange)};
     }
 
     // const common-range end(), returns Iterator
@@ -1161,19 +1160,19 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Iterator<true>{*this, std::ranges::end(m_base)};
+        return Iterator<true>{*this, std::ranges::end(baseRange)};
     }
 
     // non-const size()
     constexpr auto size() requires std::ranges::sized_range<Range>
     {
-        return std::ranges::size(m_base);
+        return std::ranges::size(baseRange);
     }
 
     // const size()
     constexpr auto size() const requires std::ranges::sized_range<const Range>
     {
-        return std::ranges::size(m_base);
+        return std::ranges::size(baseRange);
     }
 };
 
@@ -1209,13 +1208,13 @@ private:
 
 } // namespace views
 
-template<std::ranges::input_range Vp, std::copy_constructible Fp>
-requires std::ranges::view<Vp> && std::is_object_v<Fp> &&
-    std::regular_invocable<Fp&, std::ranges::range_reference_t<Vp>> &&
+template<std::ranges::input_range Range, std::copy_constructible Fp>
+requires std::ranges::view<Range> && std::is_object_v<Fp> &&
+    std::regular_invocable<Fp&, std::ranges::range_reference_t<Range>> &&
     detail::can_reference<
-        std::invoke_result_t<Fp&, std::ranges::range_reference_t<Vp>>>
+        std::invoke_result_t<Fp&, std::ranges::range_reference_t<Range>>>
 class narrow_projection_view
-    : public std::ranges::view_interface<narrow_projection_view<Vp, Fp>>
+    : public std::ranges::view_interface<narrow_projection_view<Range, Fp>>
 {
 private:
     template<bool IsConst>
@@ -1226,14 +1225,14 @@ private:
     {
     private:
         using Parent = detail::maybe_const_t<IsConst, narrow_projection_view>;
-        using Base = detail::maybe_const_t<IsConst, Vp>;
+        using Base = detail::maybe_const_t<IsConst, Range>;
         using BaseIter = std::ranges::iterator_t<Base>;
 
         BaseIter current = BaseIter();
         Parent* parent{};
 
     public:
-        using iterator_concept = decltype(detail::get_iter_concept<Vp>());
+        using iterator_concept = decltype(detail::get_iter_concept<Range>());
         using iterator_category =
             decltype(detail::get_iter_cat<Base, BaseIter, Fp>());
         using value_type = std::remove_cvref_t<
@@ -1248,7 +1247,7 @@ private:
         }
 
         constexpr Iterator(Iterator<!IsConst> i) requires IsConst
-            && std::convertible_to<std::ranges::iterator_t<Vp>, BaseIter>
+            && std::convertible_to<std::ranges::iterator_t<Range>, BaseIter>
             : current(std::move(i.current)), parent(i.parent)
         {
         }
@@ -1439,7 +1438,7 @@ private:
     {
     private:
         using Parent = detail::maybe_const_t<IsConst, narrow_projection_view>;
-        using Base = detail::maybe_const_t<IsConst, Vp>;
+        using Base = detail::maybe_const_t<IsConst, Range>;
 
         template<bool Const2>
         constexpr std::ranges::range_difference_t<Base>
@@ -1466,7 +1465,7 @@ private:
 
         constexpr Sentinel(Sentinel<!IsConst> i) requires IsConst
             && std::convertible_to<
-                std::ranges::sentinel_t<Vp>,
+                std::ranges::sentinel_t<Range>,
                 std::ranges::sentinel_t<Base>> : end(std::move(i.end))
         {
         }
@@ -1479,7 +1478,7 @@ private:
         template<bool Const2>
         requires std::sentinel_for<
             std::ranges::sentinel_t<Base>,
-            std::ranges::iterator_t<detail::maybe_const_t<Const2, Vp>>>
+            std::ranges::iterator_t<detail::maybe_const_t<Const2, Range>>>
         friend constexpr bool
             operator==(const Iterator<Const2>& x, const Sentinel& y)
         {
@@ -1489,7 +1488,7 @@ private:
         template<bool Const2>
         requires std::sized_sentinel_for<
             std::ranges::sentinel_t<Base>,
-            std::ranges::iterator_t<detail::maybe_const_t<Const2, Vp>>>
+            std::ranges::iterator_t<detail::maybe_const_t<Const2, Range>>>
         friend constexpr std::ranges::range_difference_t<Base>
             operator-(const Iterator<Const2>& x, const Sentinel& y)
         {
@@ -1499,7 +1498,7 @@ private:
         template<bool Const2>
         requires std::sized_sentinel_for<
             std::ranges::sentinel_t<Base>,
-            std::ranges::iterator_t<detail::maybe_const_t<Const2, Vp>>>
+            std::ranges::iterator_t<detail::maybe_const_t<Const2, Range>>>
         friend constexpr std::ranges::range_difference_t<Base>
             operator-(const Sentinel& y, const Iterator<Const2>& x)
         {
@@ -1509,23 +1508,23 @@ private:
         friend Sentinel<!IsConst>;
     };
 
-    Vp m_base{};
+    Range m_base{};
     Fp fun;
 
 public:
     narrow_projection_view() = default;
 
-    constexpr narrow_projection_view(Vp base, Fp fun)
+    constexpr narrow_projection_view(Range base, Fp fun)
         : m_base(std::move(base)), fun(std::move(fun))
     {
     }
 
-    constexpr Vp base() const& requires std::copy_constructible<Vp>
+    constexpr Range base() const& requires std::copy_constructible<Range>
     {
         return m_base;
     }
 
-    constexpr Vp base() &&
+    constexpr Range base() &&
     {
         return std::move(m_base);
     }
@@ -1535,10 +1534,10 @@ public:
         return Iterator<false>{*this, std::ranges::begin(m_base)};
     }
 
-    constexpr Iterator<true> begin()
-        const requires std::ranges::range<const Vp> && std::regular_invocable<
+    constexpr Iterator<true> begin() const requires
+        std::ranges::range<const Range> && std::regular_invocable<
             const Fp&,
-            std::ranges::range_reference_t<const Vp>>
+            std::ranges::range_reference_t<const Range>>
     {
         return Iterator<true>{*this, std::ranges::begin(m_base)};
     }
@@ -1548,33 +1547,33 @@ public:
         return Sentinel<false>{std::ranges::end(m_base)};
     }
 
-    constexpr Iterator<false> end() requires std::ranges::common_range<Vp>
+    constexpr Iterator<false> end() requires std::ranges::common_range<Range>
     {
         return Iterator<false>{*this, std::ranges::end(m_base)};
     }
 
-    constexpr Sentinel<true> end()
-        const requires std::ranges::range<const Vp> && std::regular_invocable<
+    constexpr Sentinel<true> end() const requires
+        std::ranges::range<const Range> && std::regular_invocable<
             const Fp&,
-            std::ranges::range_reference_t<const Vp>>
+            std::ranges::range_reference_t<const Range>>
     {
         return Sentinel<true>{std::ranges::end(m_base)};
     }
 
     constexpr Iterator<true> end() const requires
-        std::ranges::common_range<const Vp> && std::regular_invocable<
+        std::ranges::common_range<const Range> && std::regular_invocable<
             const Fp&,
-            std::ranges::range_reference_t<const Vp>>
+            std::ranges::range_reference_t<const Range>>
     {
         return Iterator<true>{*this, std::ranges::end(m_base)};
     }
 
-    constexpr auto size() requires std::ranges::sized_range<Vp>
+    constexpr auto size() requires std::ranges::sized_range<Range>
     {
         return std::ranges::size(m_base);
     }
 
-    constexpr auto size() const requires std::ranges::sized_range<const Vp>
+    constexpr auto size() const requires std::ranges::sized_range<const Range>
     {
         return std::ranges::size(m_base);
     }
