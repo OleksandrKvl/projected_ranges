@@ -1601,7 +1601,8 @@ template<
     std::ranges::input_range R,
     std::weakly_incrementable O,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires iter_root_copyable<std::ranges::iterator_t<R>, O>
+requires std::indirectly_readable<std::ranges::iterator_t<R>> &&
+    iter_root_copyable<std::ranges::iterator_t<R>, O>
 constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
     copy_if(R&& in, O out, Pred pred)
 {
@@ -1637,7 +1638,8 @@ concept iter_sortable =
 
 // simple selection sort
 template<std::ranges::random_access_range R, typename Cmp = std::ranges::less>
-requires iter_sortable<std::ranges::iterator_t<R>, Cmp>
+requires std::indirectly_readable<std::ranges::iterator_t<R>> &&
+    iter_sortable<std::ranges::iterator_t<R>, Cmp>
 void sort(R&& r, Cmp cmp = {})
 {
     auto begin = std::ranges::begin(r);
@@ -1661,7 +1663,8 @@ void sort(R&& r, Cmp cmp = {})
 template<
     std::ranges::forward_range R,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires iter_permutable<std::ranges::iterator_t<R>>
+requires std::indirectly_readable<std::ranges::iterator_t<R>> &&
+    iter_permutable<std::ranges::iterator_t<R>>
 constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
 {
     auto first = std::ranges::begin(r);
@@ -1721,7 +1724,8 @@ template<
     std::ranges::input_range R,
     typename T,
     std::indirect_unary_predicate<std::ranges::iterator_t<R>> Pred>
-requires iter_writable<std::ranges::iterator_t<R>, const T&>
+requires std::indirectly_readable<std::ranges::iterator_t<R>>
+    && iter_writable<std::ranges::iterator_t<R>, const T&>
 constexpr std::ranges::borrowed_iterator_t<R>
     replace_if(R&& r, Pred pred, const T& new_value)
 {
