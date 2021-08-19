@@ -2127,28 +2127,8 @@ void iter_move_test()
 
 // TODO
 // test with pure transformations which return by-value
-// test all CPO-s, it's not clear to me how to properly test them
-// in `is_noexcept()`, why don't we use declval<T&&>?
-// Use std::iter_reference_t instead of D in dereferenced versions? It
-// looks reasonable. What if operator*() returns by value? Then we simply cannot
-// assign using default implementation. I'm not sure about perfect forwarding.
-// What if operator*() returns rvalue reference?
-// use iterator_traits?
-// add indirectly_readable to algorithms because we still use operator*().
-// is it ok to forward<decltype(var)> if var is auto&& var; ??
-// think what to do about iterator-based algorithms. Looks like we need
-// something like make_projected_iterator(it, proj). But I'm not sure about its
-// behavior, for example with whom it should be comparable. And also about
-// sentinel. It's strange that there's no function to convert iterator/sentinel
-// pair into a range and use range-based algorithm.
-
 // Line 531 // TODO: should work?
-// static_cast<T&&> vs std::forward<T>
-// use forward in iter_assign? actually, I guess it should be used everywhere.
-// check all CPO-s. iter_reference_t is implemented in terms of lvalue
-// reference. maybe iterators are not intended to be used as rvalue-s. What
-// could be the valid reason to use iterator as rvalue? don't test everything,
-// it's just a POC
+// don't test everything, it's just a POC
 int main()
 {
     iter_move_test();
