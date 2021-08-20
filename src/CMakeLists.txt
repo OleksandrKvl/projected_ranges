@@ -10,8 +10,8 @@ target_sources(${EXE_NAME}
 if(MSVC)
     target_compile_options(${EXE_NAME} PRIVATE /W3 /WX)
 else()
-    # target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -pedantic -Werror)
-    target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -pedantic -fconcepts-diagnostics-depth=100)
+    # target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -Wpedantic -fconcepts-diagnostics-depth=100)
 endif()
 
 # Add compiler definitions
