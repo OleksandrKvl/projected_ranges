@@ -156,11 +156,11 @@ public:
         else if constexpr(std::is_lvalue_reference_v<
                               std::iter_reference_t<From>>)
         {
-            return std::move(*static_cast<From&&>(from));
+            return std::move(*from);
         }
         else
         {
-            return *static_cast<From&&>(from);
+            return *from;
         }
     }
 
@@ -2127,8 +2127,14 @@ void iter_move_test()
 
 // TODO
 // test with pure transformations which return by-value
-// Line 531 // TODO: should work?
+// Line 531 // TODO: should work? Yes it should because iterator is always an
+// indirection and const shouldn't affect it.
 // don't test everything, it's just a POC
+// take iter_reference_t& ? Looks like this problem exists only for "move"
+// versions. They should work like std::move() - take lvalue reference and move
+// it. Inside they forward but outside I don't move dereferenced value into
+// them. Think about by-value, lvalue-reference, rvalue-reference cases.
+// remove unneeded forwarding in CPO-s.
 int main()
 {
     iter_move_test();
