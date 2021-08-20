@@ -527,10 +527,8 @@ concept iter_writable = requires(Out&& o, T&& t)
 {
     iter_assign_from(o, std::forward<T>(t));
     iter_assign_from(std::forward<Out>(o), std::forward<T>(t));
-    // TODO: should work?
-    // iter_assign_from(const_cast<const Out&&>(o), std::forward<T>(t));
-    // iter_assign_from(const_cast<const Out&&>(std::forward<Out>(o)),
-    //     std::forward<T>(t));
+    // no need to check const_cast-ed types like `indirectly_writable` does
+    // because it's already handled by `iter_assign_from`.
 };
 // clang-format on
 
@@ -2127,8 +2125,6 @@ void iter_move_test()
 
 // TODO
 // test with pure transformations which return by-value
-// Line 531 // TODO: should work? Yes it should because iterator is always an
-// indirection and const shouldn't affect it.
 // don't test everything, it's just a POC
 // take iter_reference_t& ? Looks like this problem exists only for "move"
 // versions. They should work like std::move() - take lvalue reference and move
