@@ -2126,11 +2126,6 @@ void iter_move_test()
 // TODO
 // test with pure transformations which return by-value
 // don't test everything, it's just a POC
-// take iter_reference_t& ? Looks like this problem exists only for "move"
-// versions. They should work like std::move() - take lvalue reference and move
-// it. Inside they forward but outside I don't move dereferenced value into
-// them. Think about by-value, lvalue-reference, rvalue-reference cases.
-// remove unneeded forwarding in CPO-s.
 int main()
 {
     iter_move_test();
