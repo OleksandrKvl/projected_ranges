@@ -78,15 +78,12 @@ namespace iter_move_cpo
 {
 void iter_move();
 
-// clang-format off
-    template<typename From>
-    concept has_adl_iter_move = 
-        detail::class_or_enum<std::remove_cvref_t<From>> &&
-        requires(From&& from)
-        {
-            iter_move(static_cast<From&&>(from));
-        };
-// clang-format on
+template<typename From>
+concept has_adl_iter_move = detail::class_or_enum<std::remove_cvref_t<From>> &&
+    requires(From&& from)
+{
+    iter_move(static_cast<From&&>(from));
+};
 
 struct impl
 {
@@ -130,16 +127,14 @@ private:
         using type = decltype(iter_move(std::declval<From>()));
     };
 
-    // clang-format off
     template<typename From>
     requires(
         !has_adl_iter_move<From> &&
-        std::is_lvalue_reference_v<std::iter_reference_t<From>>)
-    struct result<From>
+        std::is_lvalue_reference_v<
+            std::iter_reference_t<From>>) struct result<From>
     {
         using type = std::remove_cvref_t<std::iter_reference_t<From>>&&;
     };
-    // clang-format on
 
     template<typename From>
     using result_t = typename result<From>::type;
@@ -194,15 +189,13 @@ namespace iter_assign_from_cpo
 {
 void iter_assign_from();
 
-// clang-format off
 template<typename To, typename From>
-concept has_adl_iter_assign_from = 
+concept has_adl_iter_assign_from =
     detail::class_or_enum<std::remove_cvref_t<To>> &&
     requires(To&& to, From&& from)
-    {
-        iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
-    };
-// clang-format on
+{
+    iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+};
 
 struct impl
 {
@@ -236,43 +229,38 @@ private:
     }
 
 public:
-    // clang-format off
     template<typename To, typename From>
-    requires (has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>)
-    constexpr void operator()(To&& to, From&& from) const
-        noexcept(is_noexcept<To, From>())
+    requires(
+        has_adl_iter_assign_from<To, From> ||
+        std::indirectly_writable<To, From>) constexpr void
+        operator()(To&& to, From&& from) const noexcept(is_noexcept<To, From>())
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            iter_assign_from(
-                static_cast<To&&>(to), static_cast<From&&>(from));
+            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
         }
         else
         {
             *to = static_cast<From&&>(from);
         }
     }
-    // clang-format on
 
-    // clang-format off
     template<typename To, typename From, typename D>
-    requires (has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>)
-    constexpr void operator()(To&& to, From&& from, D&& dereferenced) const
+    requires(
+        has_adl_iter_assign_from<To, From> ||
+        std::indirectly_writable<To, From>) constexpr void
+        operator()(To&& to, From&& from, D&& dereferenced) const
         noexcept(is_noexcept2<To, From, D>())
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            iter_assign_from(
-                static_cast<To&&>(to), static_cast<From&&>(from));
+            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
         }
         else
         {
             dereferenced = static_cast<From&&>(from);
         }
     }
-    // clang-format on
 };
 } // namespace iter_assign_from_cpo
 
@@ -291,15 +279,13 @@ namespace iter_copy_root_cpo
 {
     void iter_copy_root();
 
-    // clang-format off
     template<typename From>
     concept has_adl_iter_copy_root =
         detail::class_or_enum<std::remove_cvref_t<From>> &&
-        requires(From&& from)
-        {
-            iter_copy_root(static_cast<From&&>(from));
-        };
-    // clang-format on
+        requires(From && from)
+    {
+        iter_copy_root(static_cast<From&&>(from));
+    };
 
     struct impl
     {
@@ -399,15 +385,12 @@ namespace iter_move_root_cpo
 {
 void iter_move_root();
 
-// clang-format off
-    template<typename From>
-    concept has_adl_iter_move_root = 
-        detail::class_or_enum<std::remove_cvref_t<From>> &&
-        requires(From&& from)
-        {
-            iter_move_root(static_cast<From&&>(from));
-        };
-// clang-format on
+template<typename From>
+concept has_adl_iter_move_root =
+    detail::class_or_enum<std::remove_cvref_t<From>> && requires(From&& from)
+{
+    iter_move_root(static_cast<From&&>(from));
+};
 
 struct impl
 {
@@ -521,7 +504,6 @@ using range_root_rvalue_reference_t =
     iter_root_rvalue_reference_t<std::ranges::iterator_t<T>>;
 
 // analog of std::indirectly_writable
-// clang-format off
 template<typename Out, typename T>
 concept iter_writable = requires(Out&& o, T&& t)
 {
@@ -530,7 +512,6 @@ concept iter_writable = requires(Out&& o, T&& t)
     // no need to check const_cast-ed types like `indirectly_writable` does
     // because it's already handled by `iter_assign_from`.
 };
-// clang-format on
 
 // analog of std::indirectly_readable
 // clang-format off
@@ -578,16 +559,14 @@ namespace iter_swap_cpo
 template<typename It1, typename It2>
 void iter_swap(It1, It2) = delete;
 
-// clang-format off
-    template<typename It1, typename It2>
-    concept has_adl_iter_swap = 
-        (detail::class_or_enum<std::remove_cvref_t<It1>> ||
-        detail::class_or_enum<std::remove_cvref_t<It2>>) &&
-        requires(It1&& it1, It2&& it2)
-        {
-            iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
-        };
-// clang-format on
+template<typename It1, typename It2>
+concept has_adl_iter_swap =
+    (detail::class_or_enum<std::remove_cvref_t<It1>> ||
+     detail::class_or_enum<
+         std::remove_cvref_t<It2>>)&&requires(It1&& it1, It2&& it2)
+{
+    iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
+};
 
 struct impl
 {
@@ -736,18 +715,15 @@ inline constexpr iter_swap_cpo::impl iter_swap{};
 }
 
 // analog of std::indirectly_swappable
-// clang-format off
-template< class I1, class I2 >
-concept iter_swappable =
-    iter_root_readable<I1> &&
-    iter_root_readable<I2> &&
-    requires(const I1 i1, const I2 i2) {
-        stdf::iter_swap(i1, i1);
-        stdf::iter_swap(i1, i2);
-        stdf::iter_swap(i2, i1);
-        stdf::iter_swap(i2, i2);
-    };
-// clang-format on
+template<class I1, class I2>
+concept iter_swappable = iter_root_readable<I1> && iter_root_readable<I2> &&
+    requires(const I1 i1, const I2 i2)
+{
+    stdf::iter_swap(i1, i1);
+    stdf::iter_swap(i1, i2);
+    stdf::iter_swap(i2, i1);
+    stdf::iter_swap(i2, i2);
+};
 
 //------------------------------------------------------------------------------
 
@@ -989,10 +965,7 @@ private:
 
         constexpr root_type root() const noexcept
         {
-            if constexpr(requires
-                         {
-                             current.root();
-                         })
+            if constexpr(requires { current.root(); })
             {
                 return current.root();
             }
@@ -1374,15 +1347,12 @@ private:
             return x.current - y.current;
         }
 
-        // clang-format off
         friend constexpr iter_root_reference_t<BaseIter>
-            iter_copy_root(const Iterator& it)
-            requires (!std::is_lvalue_reference_v<
-                std::iter_reference_t<Iterator>>)
+            iter_copy_root(const Iterator& it) requires(
+                !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>)
         {
             return stdf::iter_copy_root(it.current);
         }
-        // clang-format on
 
         template<typename T>
         friend constexpr void
@@ -1395,10 +1365,7 @@ private:
 
         constexpr auto root() const noexcept
         {
-            if constexpr(requires
-                         {
-                             current.root();
-                         })
+            if constexpr(requires { current.root(); })
             {
                 return current.root();
             }
@@ -1588,12 +1555,9 @@ private:
 //------------------------------------------------------------------------------
 
 // analog of std::indirectly_copyable
-// clang-format off
 template<typename In, typename Out>
 concept iter_root_copyable =
-    iter_root_readable<In> &&
-    iter_writable<Out, iter_root_t<In>>;
-// clang-format on
+    iter_root_readable<In> && iter_writable<Out, iter_root_t<In>>;
 
 template<
     std::ranges::input_range R,
@@ -1621,13 +1585,9 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
 }
 
 // analog of std::permutable
-// clang-format off
 template<typename I>
-concept iter_permutable =
-    std::forward_iterator<I> &&
-    iter_movable_storable<I, I> &&
-    iter_swappable<I, I>;
-// clang-format on
+concept iter_permutable = std::forward_iterator<I> &&
+    iter_movable_storable<I, I> && iter_swappable<I, I>;
 
 // analog of std::sortable
 template<typename I, typename R = std::ranges::less>
@@ -1984,7 +1944,6 @@ public:
     using value_type = int;
     using root_type = S;
 
-    // clang-format off
     value_type operator*() requires DerefByValue
     {
         deref_calls++;
@@ -2003,15 +1962,13 @@ public:
         return std::move(it.s.i);
     }
 
-    friend root_type&
-        iter_copy_root(iterator& it) requires CustomIterCopyRoot
+    friend root_type& iter_copy_root(iterator& it) requires CustomIterCopyRoot
     {
         iter_copy_root_calls++;
         return it.s;
     }
 
-    friend root_type&&
-        iter_move_root(iterator& it) requires CustomIterMoveRoot
+    friend root_type&& iter_move_root(iterator& it) requires CustomIterMoveRoot
     {
         iter_move_root_calls++;
         return std::move(it.s);
@@ -2024,13 +1981,11 @@ public:
         return it.s = x;
     }
 
-    friend void iter_swap(iterator it1, iterator it2) requires
-        CustomIterSwap
+    friend void iter_swap(iterator it1, iterator it2) requires CustomIterSwap
     {
         iter_swap_calls++;
         return std::ranges::swap(it1.s, it2.s);
     }
-    // clang-format on
 
     static void reset_counters()
     {
