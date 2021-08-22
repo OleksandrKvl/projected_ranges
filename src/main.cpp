@@ -89,6 +89,34 @@ struct impl
 {
 private:
     template<typename From>
+    struct result
+    {
+        using type = std::iter_reference_t<From>;
+    };
+
+    template<typename From>
+    requires has_adl_iter_move<From>
+    struct result<From>
+    {
+        using type = decltype(iter_move(std::declval<From>()));
+    };
+
+    // clang-format off
+    template<typename From>
+    requires(
+        !has_adl_iter_move<From> &&
+        std::is_lvalue_reference_v<
+            std::iter_reference_t<From>>)
+    struct result<From>
+    {
+        using type = std::remove_cvref_t<std::iter_reference_t<From>>&&;
+    };
+    // clang-format on
+
+    template<typename From>
+    using result_t = typename result<From>::type;
+
+    template<typename From>
     static constexpr bool is_noexcept()
     {
         if constexpr(has_adl_iter_move<From>)
@@ -108,36 +136,19 @@ private:
         {
             return noexcept(iter_move(std::declval<From>()));
         }
+        else if constexpr(!std::is_reference_v<std::iter_reference_t<From>>)
+        {
+            // if operator*() returns by-value then second version of
+            // iter_move() move-constructs returned value from `dereferenced`
+            return std::is_nothrow_constructible_v<
+                result_t<From>,
+                std::iter_reference_t<From>&>;
+        }
         else
         {
             return true;
         }
     }
-
-    template<typename From>
-    struct result
-    {
-        using type = std::iter_reference_t<From>;
-    };
-
-    template<typename From>
-    requires has_adl_iter_move<From>
-    struct result<From>
-    {
-        using type = decltype(iter_move(std::declval<From>()));
-    };
-
-    template<typename From>
-    requires(
-        !has_adl_iter_move<From> &&
-        std::is_lvalue_reference_v<
-            std::iter_reference_t<From>>) struct result<From>
-    {
-        using type = std::remove_cvref_t<std::iter_reference_t<From>>&&;
-    };
-
-    template<typename From>
-    using result_t = typename result<From>::type;
 
 public:
     template<typename From>
@@ -159,22 +170,18 @@ public:
         }
     }
 
-    template<typename From, typename D>
-    constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
+    template<typename From>
+    constexpr result_t<From>
+        operator()(From&& from, std::iter_reference_t<From>& dereferenced) const
         noexcept(is_noexcept2<From>())
     {
         if constexpr(has_adl_iter_move<From>)
         {
             return iter_move(static_cast<From&&>(from));
         }
-        else if constexpr(std::is_lvalue_reference_v<
-                              std::iter_reference_t<From>>)
-        {
-            return std::move(dereferenced);
-        }
         else
         {
-            return static_cast<D&&>(dereferenced);
+            return std::move(dereferenced);
         }
     }
 };
@@ -1926,157 +1933,255 @@ void replace_if_test()
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
+// struct S
+// {
+//     int i;
+// };
+
+// template<
+//     bool DerefByValue,
+//     bool CustomIterMove = false,
+//     bool CustomIterCopyRoot = false,
+//     bool CustomIterMoveRoot = false,
+//     bool CustomIterAssign = false,
+//     bool CustomIterSwap = false>
+// class iterator
+// {
+// public:
+//     using value_type = int;
+//     using root_type = S;
+
+//     value_type operator*() requires DerefByValue
+//     {
+//         deref_calls++;
+//         return s.i;
+//     }
+
+//     value_type& operator*() requires(!DerefByValue)
+//     {
+//         deref_calls++;
+//         return s.i;
+//     }
+
+//     friend value_type&& iter_move(iterator& it) requires CustomIterMove
+//     {
+//         iter_move_calls++;
+//         return std::move(it.s.i);
+//     }
+
+//     friend root_type& iter_copy_root(iterator& it) requires
+//     CustomIterCopyRoot
+//     {
+//         iter_copy_root_calls++;
+//         return it.s;
+//     }
+
+//     friend root_type&& iter_move_root(iterator& it) requires
+//     CustomIterMoveRoot
+//     {
+//         iter_move_root_calls++;
+//         return std::move(it.s);
+//     }
+
+//     friend void iter_assign_from(const iterator& it, value_type& x) requires
+//         CustomIterAssign
+//     {
+//         iter_assign_from_calls++;
+//         return it.s = x;
+//     }
+
+//     friend void iter_swap(iterator it1, iterator it2) requires CustomIterSwap
+//     {
+//         iter_swap_calls++;
+//         return std::ranges::swap(it1.s, it2.s);
+//     }
+
+//     static void reset_counters()
+//     {
+//         deref_calls = 0;
+//         iter_move_calls = 0;
+//         iter_copy_root_calls = 0;
+//         iter_move_root_calls = 0;
+//         iter_assign_from_calls = 0;
+//         iter_swap_calls = 0;
+//     }
+
+//     static std::size_t get_deref_calls()
+//     {
+//         return deref_calls;
+//     }
+
+//     static std::size_t get_iter_move_calls()
+//     {
+//         return iter_move_calls;
+//     }
+
+//     static std::size_t get_iter_copy_root_calls()
+//     {
+//         return iter_copy_root_calls;
+//     }
+
+//     static std::size_t get_iter_move_root_calls()
+//     {
+//         return iter_move_root_calls;
+//     }
+
+//     static std::size_t get_iter_assign_from_calls()
+//     {
+//         return iter_assign_from_calls;
+//     }
+
+//     static std::size_t get_iter_swap_calls()
+//     {
+//         return iter_swap_calls;
+//     }
+
+// private:
+//     S s;
+//     static inline std::size_t deref_calls{};
+//     static inline std::size_t iter_move_calls{};
+//     static inline std::size_t iter_copy_root_calls{};
+//     static inline std::size_t iter_move_root_calls{};
+//     static inline std::size_t iter_assign_from_calls{};
+//     static inline std::size_t iter_swap_calls{};
+// };
+
 struct S
 {
-    int i;
-};
-
-template<
-    bool DerefByValue,
-    bool CustomIterMove = false,
-    bool CustomIterCopyRoot = false,
-    bool CustomIterMoveRoot = false,
-    bool CustomIterAssign = false,
-    bool CustomIterSwap = false>
-class iterator
-{
-public:
-    using value_type = int;
-    using root_type = S;
-
-    value_type operator*() requires DerefByValue
+    S()
     {
-        deref_calls++;
-        return s.i;
     }
 
-    value_type& operator*() requires(!DerefByValue)
+    S(const S&)
     {
-        deref_calls++;
-        return s.i;
+        copy_ctor_calls++;
     }
 
-    friend value_type&& iter_move(iterator& it) requires CustomIterMove
+    S(S&&)
     {
-        iter_move_calls++;
-        return std::move(it.s.i);
-    }
-
-    friend root_type& iter_copy_root(iterator& it) requires CustomIterCopyRoot
-    {
-        iter_copy_root_calls++;
-        return it.s;
-    }
-
-    friend root_type&& iter_move_root(iterator& it) requires CustomIterMoveRoot
-    {
-        iter_move_root_calls++;
-        return std::move(it.s);
-    }
-
-    friend void iter_assign_from(const iterator& it, value_type& x) requires
-        CustomIterAssign
-    {
-        iter_assign_from_calls++;
-        return it.s = x;
-    }
-
-    friend void iter_swap(iterator it1, iterator it2) requires CustomIterSwap
-    {
-        iter_swap_calls++;
-        return std::ranges::swap(it1.s, it2.s);
+        move_ctor_calls++;
     }
 
     static void reset_counters()
     {
-        deref_calls = 0;
-        iter_move_calls = 0;
-        iter_copy_root_calls = 0;
-        iter_move_root_calls = 0;
-        iter_assign_from_calls = 0;
-        iter_swap_calls = 0;
+        copy_ctor_calls = 0;
+        move_ctor_calls = 0;
     }
 
-    static std::size_t get_deref_calls()
+    static inline std::size_t copy_ctor_calls{};
+    static inline std::size_t move_ctor_calls{};
+};
+
+struct It1
+{
+    S operator*()
     {
-        return deref_calls;
+        return S{};
     }
+};
 
-    static std::size_t get_iter_move_calls()
+struct It2
+{
+    S& operator*()
     {
-        return iter_move_calls;
+        static S s;
+        return s;
     }
+};
 
-    static std::size_t get_iter_copy_root_calls()
+struct It3
+{
+    S&& operator*()
     {
-        return iter_copy_root_calls;
+        static S s;
+        return std::move(s);
     }
-
-    static std::size_t get_iter_move_root_calls()
-    {
-        return iter_move_root_calls;
-    }
-
-    static std::size_t get_iter_assign_from_calls()
-    {
-        return iter_assign_from_calls;
-    }
-
-    static std::size_t get_iter_swap_calls()
-    {
-        return iter_swap_calls;
-    }
-
-private:
-    S s;
-    static inline std::size_t deref_calls{};
-    static inline std::size_t iter_move_calls{};
-    static inline std::size_t iter_copy_root_calls{};
-    static inline std::size_t iter_move_root_calls{};
-    static inline std::size_t iter_assign_from_calls{};
-    static inline std::size_t iter_swap_calls{};
 };
 
 void iter_move_test()
 {
-    // test custom/default iter_move and dereferenced version. Also, return
-    // by-value/by-reference
-    // test return type of iter_move, test number of calls to move/copy.
-    // for each we need to test: that customized version is used,
-    // that value was correspondingly copied/moved only once
-    using by_ref_it_t = iterator<false>;
-    using by_val_it_t = iterator<true>;
+    {
+        S::reset_counters();
 
-    static_assert(std::is_same_v<std::iter_value_t<by_ref_it_t>, int>);
-    static_assert(std::is_same_v<std::iter_reference_t<by_ref_it_t>, int&>);
-    static_assert(
-        std::is_same_v<std::iter_rvalue_reference_t<by_ref_it_t>, int&&>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_t<by_ref_it_t>,
-                  std::iter_value_t<by_ref_it_t>>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_reference_t<by_ref_it_t>,
-                  std::iter_reference_t<by_ref_it_t>>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_rvalue_reference_t<by_ref_it_t>,
-                  std::iter_rvalue_reference_t<by_ref_it_t>>);
+        using it_t = It1;
+        static_assert(!std::is_reference_v<std::iter_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r =
+            stdf::iter_move(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 1);
+    }
 
-    static_assert(std::is_same_v<std::iter_value_t<by_val_it_t>, int>);
-    static_assert(std::is_same_v<std::iter_reference_t<by_val_it_t>, int>);
-    static_assert(
-        std::is_same_v<std::iter_rvalue_reference_t<by_val_it_t>, int>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_t<by_val_it_t>,
-                  std::iter_value_t<by_val_it_t>>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_reference_t<by_val_it_t>,
-                  std::iter_reference_t<by_val_it_t>>);
-    static_assert(std::is_same_v<
-                  stdf::iter_root_rvalue_reference_t<by_val_it_t>,
-                  std::iter_rvalue_reference_t<by_val_it_t>>);
+    {
+        S::reset_counters();
 
-    by_ref_it_t by_ref_it;
+        using it_t = It2;
+        static_assert(
+            std::is_rvalue_reference_v<std::iter_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r =
+            stdf::iter_move(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
+
+    {
+        S::reset_counters();
+
+        using it_t = It3;
+        static_assert(
+            std::is_rvalue_reference_v<std::iter_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r =
+            stdf::iter_move(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
 }
+
+// void iter_move_test()
+// {
+//     // test custom/default iter_move and dereferenced version. Also, return
+//     // by-value/by-reference
+//     // test return type of iter_move, test number of calls to move/copy.
+//     // for each we need to test: that customized version is used,
+//     // that value was correspondingly copied/moved only once
+//     using by_ref_it_t = iterator<false>;
+//     using by_val_it_t = iterator<true>;
+
+//     static_assert(std::is_same_v<std::iter_value_t<by_ref_it_t>, int>);
+//     static_assert(std::is_same_v<std::iter_reference_t<by_ref_it_t>, int&>);
+//     static_assert(
+//         std::is_same_v<std::iter_rvalue_reference_t<by_ref_it_t>, int&&>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_t<by_ref_it_t>,
+//                   std::iter_value_t<by_ref_it_t>>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_reference_t<by_ref_it_t>,
+//                   std::iter_reference_t<by_ref_it_t>>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_rvalue_reference_t<by_ref_it_t>,
+//                   std::iter_rvalue_reference_t<by_ref_it_t>>);
+
+//     static_assert(std::is_same_v<std::iter_value_t<by_val_it_t>, int>);
+//     static_assert(std::is_same_v<std::iter_reference_t<by_val_it_t>, int>);
+//     static_assert(
+//         std::is_same_v<std::iter_rvalue_reference_t<by_val_it_t>, int>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_t<by_val_it_t>,
+//                   std::iter_value_t<by_val_it_t>>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_reference_t<by_val_it_t>,
+//                   std::iter_reference_t<by_val_it_t>>);
+//     static_assert(std::is_same_v<
+//                   stdf::iter_root_rvalue_reference_t<by_val_it_t>,
+//                   std::iter_rvalue_reference_t<by_val_it_t>>);
+
+//     by_ref_it_t by_ref_it;
+// }
 
 // TODO
 // test with pure transformations which return by-value
