@@ -298,6 +298,22 @@ namespace iter_copy_root_cpo
     {
     private:
         template<typename From>
+        struct result
+        {
+            using type = decltype(*std::declval<From>());
+        };
+
+        template<typename From>
+        requires has_adl_iter_copy_root<From>
+        struct result<From>
+        {
+            using type = decltype(iter_copy_root(std::declval<From>()));
+        };
+
+        template<typename From>
+        using result_t = typename result<From>::type;
+
+        template<typename From>
         static constexpr bool is_noexcept()
         {
             if constexpr(has_adl_iter_copy_root<From>)
@@ -316,27 +332,17 @@ namespace iter_copy_root_cpo
             {
                 return noexcept(iter_copy_root(std::declval<From>()));
             }
+            else if constexpr(!std::is_reference_v<result_t<From>>)
+            {
+                return std::is_nothrow_constructible_v<
+                    result_t<From>,
+                    std::iter_reference_t<From>&>;
+            }
             else
             {
                 return true;
             }
         }
-
-        template<typename From>
-        struct result
-        {
-            using type = decltype(*std::declval<From>());
-        };
-
-        template<typename From>
-        requires has_adl_iter_copy_root<From>
-        struct result<From>
-        {
-            using type = decltype(iter_copy_root(std::declval<From>()));
-        };
-
-        template<typename From>
-        using result_t = typename result<From>::type;
 
     public:
         template<typename From>
@@ -353,17 +359,23 @@ namespace iter_copy_root_cpo
             }
         }
 
-        template<typename From, typename D>
-        constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
+        template<typename From>
+        constexpr result_t<From> operator()(
+            From&& from, std::iter_reference_t<From>& dereferenced) const
             noexcept(is_noexcept2<From>())
         {
             if constexpr(has_adl_iter_copy_root<From>)
             {
                 return iter_copy_root(static_cast<From&&>(from));
             }
+            else if constexpr(std::is_lvalue_reference_v<
+                                  std::iter_reference_t<From>>)
+            {
+                return dereferenced;
+            }
             else
             {
-                return std::forward<D>(dereferenced);
+                return std::move(dereferenced);
             }
         }
     };
@@ -2142,6 +2154,50 @@ void iter_move_test()
     }
 }
 
+void iter_copy_root_test()
+{
+    {
+        S::reset_counters();
+
+        using it_t = It1;
+        static_assert(!std::is_reference_v<stdf::iter_root_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_reference_t<it_t> r =
+            stdf::iter_copy_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 1);
+    }
+
+    {
+        S::reset_counters();
+
+        using it_t = It2;
+        static_assert(
+            std::is_lvalue_reference_v<stdf::iter_root_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_reference_t<it_t> r =
+            stdf::iter_copy_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
+
+    {
+        S::reset_counters();
+
+        using it_t = It3;
+        static_assert(
+            std::is_rvalue_reference_v<stdf::iter_root_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_reference_t<it_t> r =
+            stdf::iter_copy_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
+}
+
 // void iter_move_test()
 // {
 //     // test custom/default iter_move and dereferenced version. Also, return
@@ -2189,6 +2245,7 @@ void iter_move_test()
 int main()
 {
     iter_move_test();
+    iter_copy_root_test();
 
     projection_test();
     narrow_projection_test();
