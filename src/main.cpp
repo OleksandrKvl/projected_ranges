@@ -221,7 +221,7 @@ private:
         }
     }
 
-    template<typename To, typename From, typename D>
+    template<typename To, typename From>
     static constexpr bool is_noexcept2()
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
@@ -231,7 +231,9 @@ private:
         }
         else
         {
-            return noexcept((std::declval<D>()) = std::declval<From>());
+            return noexcept(
+                (std::declval<std::iter_reference_t<To>&>()) =
+                    std::declval<From>());
         }
     }
 
@@ -252,12 +254,13 @@ public:
         }
     }
 
-    template<typename To, typename From, typename D>
+    template<typename To, typename From>
     requires(
         has_adl_iter_assign_from<To, From> ||
         std::indirectly_writable<To, From>) constexpr void
-        operator()(To&& to, From&& from, D&& dereferenced) const
-        noexcept(is_noexcept2<To, From, D>())
+        operator()(
+            To&& to, From&& from, std::iter_reference_t<To>& dereferenced) const
+        noexcept(is_noexcept2<To, From>())
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
