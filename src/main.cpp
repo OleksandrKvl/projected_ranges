@@ -427,7 +427,7 @@ private:
         }
     }
 
-    template<typename From, typename D>
+    template<typename From>
     static constexpr bool is_noexcept2()
     {
         if constexpr(has_adl_iter_move_root<From>)
@@ -436,8 +436,9 @@ private:
         }
         else
         {
-            return noexcept(
-                iter_copy_root(std::declval<From>(), std::declval<D>()));
+            return noexcept(iter_copy_root(
+                std::declval<From>(),
+                std::declval<std::iter_reference_t<From>&>()));
         }
     }
 
@@ -486,9 +487,10 @@ public:
         }
     }
 
-    template<typename From, typename D>
-    constexpr result_t<From> operator()(From&& from, D&& dereferenced) const
-        noexcept(is_noexcept2<From, D>())
+    template<typename From>
+    constexpr result_t<From>
+        operator()(From&& from, std::iter_reference_t<From>& dereferenced) const
+        noexcept(is_noexcept2<From>())
     {
         if constexpr(has_adl_iter_move_root<From>)
         {
@@ -497,13 +499,12 @@ public:
         else if constexpr(std::is_lvalue_reference_v<
                               iter_root_reference_t<From>>)
         {
-            return std::move(iter_copy_root(
-                static_cast<From&&>(from), static_cast<D&&>(dereferenced)));
+            return std::move(
+                iter_copy_root(static_cast<From&&>(from), dereferenced));
         }
         else
         {
-            return iter_copy_root(
-                static_cast<From&&>(from), static_cast<D&&>(dereferenced));
+            return iter_copy_root(static_cast<From&&>(from), dereferenced);
         }
     }
 };
@@ -2198,6 +2199,51 @@ void iter_copy_root_test()
     }
 }
 
+void iter_move_root_test()
+{
+    {
+        S::reset_counters();
+
+        using it_t = It1;
+        static_assert(
+            !std::is_reference_v<stdf::iter_root_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r =
+            stdf::iter_move_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 1);
+    }
+
+    {
+        S::reset_counters();
+
+        using it_t = It2;
+        static_assert(std::is_rvalue_reference_v<
+                      stdf::iter_root_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r =
+            stdf::iter_move_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
+
+    {
+        S::reset_counters();
+
+        using it_t = It3;
+        static_assert(std::is_rvalue_reference_v<
+                      stdf::iter_root_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r =
+            stdf::iter_move_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+    }
+}
+
 // void iter_move_test()
 // {
 //     // test custom/default iter_move and dereferenced version. Also, return
@@ -2246,6 +2292,7 @@ int main()
 {
     iter_move_test();
     iter_copy_root_test();
+    iter_move_root_test();
 
     projection_test();
     narrow_projection_test();
