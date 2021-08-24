@@ -1,3 +1,4 @@
+#include <bits/iterator_concepts.h>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -605,9 +606,14 @@ private:
         return old_value;
     }
 
-    template<typename It1, typename It2, typename D1, typename D2>
+    // clang-format off
+    template<typename It1, typename It2>
     static constexpr iter_root_t<It1>
-        iter_exchange_move(It1&& it1, It2&& it2, D1&& d1, D2&& d2) noexcept(
+        iter_exchange_move(
+            It1&& it1,
+            It2&& it2,
+            std::iter_reference_t<It1>& d1,
+            std::iter_reference_t<It2>& d2) noexcept(
             noexcept(iter_root_t<It1>(iter_move_root(it1, d1))) && noexcept(
                 iter_assign_from(it1, iter_move_root(it2, d2), d1)))
     {
@@ -615,6 +621,7 @@ private:
         iter_assign_from(it1, iter_move_root(it2, d2), d1);
         return old_value;
     }
+    // clang-format on
 
     template<typename It1, typename It2>
     static constexpr bool is_noexcept()
@@ -641,7 +648,7 @@ private:
         }
     }
 
-    template<typename It1, typename It2, typename D1, typename D2>
+    template<typename It1, typename It2>
     static constexpr bool is_noexcept2()
     {
         if constexpr(has_adl_iter_swap<It1, It2>)
@@ -655,8 +662,9 @@ private:
                 std::iter_reference_t<It1>,
                 std::iter_reference_t<It2>>)
         {
-            return noexcept(
-                std::ranges::swap(std::declval<D1>(), std::declval<D2>()));
+            return noexcept(std::ranges::swap(
+                std::declval<std::iter_reference_t<It1>&>(),
+                std::declval<std::iter_reference_t<It1>&>()));
         }
         else
         {
@@ -665,9 +673,9 @@ private:
                 iter_exchange_move(
                     std::declval<It2>(),
                     std::declval<It1>(),
-                    std::declval<D1>(),
-                    std::declval<D2>()),
-                std::declval<D1>()));
+                    std::declval<std::iter_reference_t<It1>&>(),
+                    std::declval<std::iter_reference_t<It2>&>()),
+                std::declval<std::iter_reference_t<It1>&>()));
         }
     }
 
@@ -701,9 +709,13 @@ public:
         }
     }
 
-    template<typename It1, typename It2, typename D1, typename D2>
-    constexpr void operator()(It1&& it1, It2&& it2, D1&& d1, D2&& d2) const
-        noexcept(is_noexcept2<It1, It2, D1, D2>()) requires(
+    template<typename It1, typename It2>
+    constexpr void operator()(
+        It1&& it1,
+        It2&& it2,
+        std::iter_reference_t<It1>& d1,
+        std::iter_reference_t<It2>& d2) const
+        noexcept(is_noexcept2<It1, It2>()) requires(
             has_adl_iter_swap<It1, It2> ||
             (std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
              std::swappable_with<
@@ -722,7 +734,7 @@ public:
                 std::iter_reference_t<It1>,
                 std::iter_reference_t<It2>>)
         {
-            std::ranges::swap(static_cast<D1&&>(d1), static_cast<D2&&>(d2));
+            std::ranges::swap(d1, d2);
         }
         else
         {
