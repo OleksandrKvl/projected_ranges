@@ -1,4 +1,3 @@
-#include <bits/iterator_concepts.h>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -1961,119 +1960,6 @@ void replace_if_test()
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
 
-// struct S
-// {
-//     int i;
-// };
-
-// template<
-//     bool DerefByValue,
-//     bool CustomIterMove = false,
-//     bool CustomIterCopyRoot = false,
-//     bool CustomIterMoveRoot = false,
-//     bool CustomIterAssign = false,
-//     bool CustomIterSwap = false>
-// class iterator
-// {
-// public:
-//     using value_type = int;
-//     using root_type = S;
-
-//     value_type operator*() requires DerefByValue
-//     {
-//         deref_calls++;
-//         return s.i;
-//     }
-
-//     value_type& operator*() requires(!DerefByValue)
-//     {
-//         deref_calls++;
-//         return s.i;
-//     }
-
-//     friend value_type&& iter_move(iterator& it) requires CustomIterMove
-//     {
-//         iter_move_calls++;
-//         return std::move(it.s.i);
-//     }
-
-//     friend root_type& iter_copy_root(iterator& it) requires
-//     CustomIterCopyRoot
-//     {
-//         iter_copy_root_calls++;
-//         return it.s;
-//     }
-
-//     friend root_type&& iter_move_root(iterator& it) requires
-//     CustomIterMoveRoot
-//     {
-//         iter_move_root_calls++;
-//         return std::move(it.s);
-//     }
-
-//     friend void iter_assign_from(const iterator& it, value_type& x) requires
-//         CustomIterAssign
-//     {
-//         iter_assign_from_calls++;
-//         return it.s = x;
-//     }
-
-//     friend void iter_swap(iterator it1, iterator it2) requires CustomIterSwap
-//     {
-//         iter_swap_calls++;
-//         return std::ranges::swap(it1.s, it2.s);
-//     }
-
-//     static void reset_counters()
-//     {
-//         deref_calls = 0;
-//         iter_move_calls = 0;
-//         iter_copy_root_calls = 0;
-//         iter_move_root_calls = 0;
-//         iter_assign_from_calls = 0;
-//         iter_swap_calls = 0;
-//     }
-
-//     static std::size_t get_deref_calls()
-//     {
-//         return deref_calls;
-//     }
-
-//     static std::size_t get_iter_move_calls()
-//     {
-//         return iter_move_calls;
-//     }
-
-//     static std::size_t get_iter_copy_root_calls()
-//     {
-//         return iter_copy_root_calls;
-//     }
-
-//     static std::size_t get_iter_move_root_calls()
-//     {
-//         return iter_move_root_calls;
-//     }
-
-//     static std::size_t get_iter_assign_from_calls()
-//     {
-//         return iter_assign_from_calls;
-//     }
-
-//     static std::size_t get_iter_swap_calls()
-//     {
-//         return iter_swap_calls;
-//     }
-
-// private:
-//     S s;
-//     static inline std::size_t deref_calls{};
-//     static inline std::size_t iter_move_calls{};
-//     static inline std::size_t iter_copy_root_calls{};
-//     static inline std::size_t iter_move_root_calls{};
-//     static inline std::size_t iter_assign_from_calls{};
-//     static inline std::size_t iter_swap_calls{};
-// };
-
 struct S
 {
     S()
@@ -2104,8 +1990,16 @@ struct It1
 {
     S operator*()
     {
+        deref_calls++;
         return S{};
     }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
 };
 
 struct It2
@@ -2113,8 +2007,16 @@ struct It2
     S& operator*()
     {
         static S s;
+        deref_calls++;
         return s;
     }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
 };
 
 struct It3
@@ -2122,16 +2024,26 @@ struct It3
     S&& operator*()
     {
         static S s;
+        deref_calls++;
         return std::move(s);
     }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
 };
 
 void iter_move_test()
 {
     {
-        S::reset_counters();
-
         using it_t = It1;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(!std::is_reference_v<std::iter_rvalue_reference_t<it_t>>);
         it_t it;
         auto&& d = *it;
@@ -2139,12 +2051,15 @@ void iter_move_test()
             stdf::iter_move(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 1);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It2;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(
             std::is_rvalue_reference_v<std::iter_rvalue_reference_t<it_t>>);
         it_t it;
@@ -2153,12 +2068,15 @@ void iter_move_test()
             stdf::iter_move(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It3;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(
             std::is_rvalue_reference_v<std::iter_rvalue_reference_t<it_t>>);
         it_t it;
@@ -2167,15 +2085,17 @@ void iter_move_test()
             stdf::iter_move(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 }
 
 void iter_copy_root_test()
 {
     {
-        S::reset_counters();
-
         using it_t = It1;
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(!std::is_reference_v<stdf::iter_root_reference_t<it_t>>);
         it_t it;
         auto&& d = *it;
@@ -2183,12 +2103,14 @@ void iter_copy_root_test()
             stdf::iter_copy_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 1);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It2;
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(
             std::is_lvalue_reference_v<stdf::iter_root_reference_t<it_t>>);
         it_t it;
@@ -2197,12 +2119,15 @@ void iter_copy_root_test()
             stdf::iter_copy_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It3;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(
             std::is_rvalue_reference_v<stdf::iter_root_reference_t<it_t>>);
         it_t it;
@@ -2211,15 +2136,18 @@ void iter_copy_root_test()
             stdf::iter_copy_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 }
 
 void iter_move_root_test()
 {
     {
-        S::reset_counters();
-
         using it_t = It1;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(
             !std::is_reference_v<stdf::iter_root_rvalue_reference_t<it_t>>);
         it_t it;
@@ -2228,12 +2156,15 @@ void iter_move_root_test()
             stdf::iter_move_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 1);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It2;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(std::is_rvalue_reference_v<
                       stdf::iter_root_rvalue_reference_t<it_t>>);
         it_t it;
@@ -2242,12 +2173,15 @@ void iter_move_root_test()
             stdf::iter_move_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 
     {
-        S::reset_counters();
-
         using it_t = It3;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
         static_assert(std::is_rvalue_reference_v<
                       stdf::iter_root_rvalue_reference_t<it_t>>);
         it_t it;
@@ -2256,49 +2190,9 @@ void iter_move_root_test()
             stdf::iter_move_root(it, d);
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
     }
 }
-
-// void iter_move_test()
-// {
-//     // test custom/default iter_move and dereferenced version. Also, return
-//     // by-value/by-reference
-//     // test return type of iter_move, test number of calls to move/copy.
-//     // for each we need to test: that customized version is used,
-//     // that value was correspondingly copied/moved only once
-//     using by_ref_it_t = iterator<false>;
-//     using by_val_it_t = iterator<true>;
-
-//     static_assert(std::is_same_v<std::iter_value_t<by_ref_it_t>, int>);
-//     static_assert(std::is_same_v<std::iter_reference_t<by_ref_it_t>, int&>);
-//     static_assert(
-//         std::is_same_v<std::iter_rvalue_reference_t<by_ref_it_t>, int&&>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_t<by_ref_it_t>,
-//                   std::iter_value_t<by_ref_it_t>>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_reference_t<by_ref_it_t>,
-//                   std::iter_reference_t<by_ref_it_t>>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_rvalue_reference_t<by_ref_it_t>,
-//                   std::iter_rvalue_reference_t<by_ref_it_t>>);
-
-//     static_assert(std::is_same_v<std::iter_value_t<by_val_it_t>, int>);
-//     static_assert(std::is_same_v<std::iter_reference_t<by_val_it_t>, int>);
-//     static_assert(
-//         std::is_same_v<std::iter_rvalue_reference_t<by_val_it_t>, int>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_t<by_val_it_t>,
-//                   std::iter_value_t<by_val_it_t>>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_reference_t<by_val_it_t>,
-//                   std::iter_reference_t<by_val_it_t>>);
-//     static_assert(std::is_same_v<
-//                   stdf::iter_root_rvalue_reference_t<by_val_it_t>,
-//                   std::iter_rvalue_reference_t<by_val_it_t>>);
-
-//     by_ref_it_t by_ref_it;
-// }
 
 // TODO
 // test with pure transformations which return by-value
@@ -2308,6 +2202,8 @@ int main()
     iter_move_test();
     iter_copy_root_test();
     iter_move_root_test();
+    // iter_assign_from_test();
+    // iter_swap_test();
 
     projection_test();
     narrow_projection_test();
