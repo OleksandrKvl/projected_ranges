@@ -231,18 +231,20 @@ private:
         }
         else
         {
-            return noexcept(
-                (std::declval<std::iter_reference_t<To>&>()) =
-                    std::declval<From>());
+            return std::
+                is_nothrow_assignable_v<std::iter_reference_t<To>&, From>;
         }
     }
 
 public:
+    // clang-format off
     template<typename To, typename From>
     requires(
         has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>) constexpr void
-        operator()(To&& to, From&& from) const noexcept(is_noexcept<To, From>())
+        std::indirectly_writable<To, From>)
+    constexpr void operator()(
+        To&& to, From&& from) const noexcept(is_noexcept<To, From>())
+    // clang-format on
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
@@ -254,13 +256,15 @@ public:
         }
     }
 
+    // clang-format off
     template<typename To, typename From>
     requires(
         has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>) constexpr void
-        operator()(
+        std::assignable_from<std::iter_reference_t<To>&, From&&>)
+    constexpr void operator()(
             To&& to, From&& from, std::iter_reference_t<To>& dereferenced) const
         noexcept(is_noexcept2<To, From>())
+    // clang-format on
     {
         if constexpr(has_adl_iter_assign_from<To, From>)
         {
@@ -1971,19 +1975,35 @@ struct S
         copy_ctor_calls++;
     }
 
+    S& operator=(const S&)
+    {
+        copy_asgn_calls++;
+        return *this;
+    }
+
     S(S&&)
     {
         move_ctor_calls++;
     }
 
+    S& operator=(S&&)
+    {
+        move_asgn_calls++;
+        return *this;
+    }
+
     static void reset_counters()
     {
         copy_ctor_calls = 0;
+        copy_asgn_calls = 0;
         move_ctor_calls = 0;
+        move_asgn_calls = 0;
     }
 
     static inline std::size_t copy_ctor_calls{};
+    static inline std::size_t copy_asgn_calls{};
     static inline std::size_t move_ctor_calls{};
+    static inline std::size_t move_asgn_calls{};
 };
 
 struct It1
@@ -2194,15 +2214,64 @@ void iter_move_root_test()
     }
 }
 
+void iter_assign_from_test()
+{
+    {
+        using it_t = It1;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it;
+        auto&& d = *it;
+
+        stdf::iter_assign_from(it, S{}, d);
+
+        assert(it_t::deref_calls == 1);
+        assert(S::move_asgn_calls == 1);
+    }
+
+    {
+        using it_t = It2;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it;
+        auto&& d = *it;
+
+        stdf::iter_assign_from(it, S{}, d);
+
+        assert(it_t::deref_calls == 1);
+        assert(S::move_asgn_calls == 1);
+    }
+
+    {
+        using it_t = It3;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it;
+        auto&& d = *it;
+
+        stdf::iter_assign_from(it, S{}, d);
+
+        assert(it_t::deref_calls == 1);
+        assert(S::move_asgn_calls == 1);
+    }
+}
+
 // TODO
 // test with pure transformations which return by-value
 // don't test everything, it's just a POC
+// test iterators with defined CPO-s?
 int main()
 {
     iter_move_test();
     iter_copy_root_test();
     iter_move_root_test();
-    // iter_assign_from_test();
+    iter_assign_from_test();
     // iter_swap_test();
 
     projection_test();
