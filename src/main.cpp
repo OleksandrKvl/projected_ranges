@@ -260,7 +260,7 @@ public:
     template<typename To, typename From>
     requires(
         has_adl_iter_assign_from<To, From> ||
-        std::assignable_from<std::iter_reference_t<To>&, From&&>)
+        std::indirectly_writable<To, From>)
     constexpr void operator()(
             To&& to, From&& from, std::iter_reference_t<To>& dereferenced) const
         noexcept(is_noexcept2<To, From>())
