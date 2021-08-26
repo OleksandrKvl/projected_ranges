@@ -142,7 +142,8 @@ private:
             // iter_move() move-constructs returned value from `dereferenced`
             return std::is_nothrow_constructible_v<
                 result_t<From>,
-                std::iter_reference_t<From>&>;
+                std::add_rvalue_reference_t<
+                    std::remove_reference_t<std::iter_reference_t<From>&>>>;
         }
         else
         {
@@ -1191,13 +1192,6 @@ private:
     F p;
 };
 
-// inline constexpr std::ranges::views::__adaptor::_RangeAdaptor projection
-// =
-//     []<std::ranges::viewable_range Range, typename Fp>(Range&& r, Fp&& f)
-// {
-//     return projection_view{std::forward<Range>(r), std::forward<Fp>(f)};
-// };
-
 } // namespace views
 
 template<std::ranges::input_range Range, std::copy_constructible Fp>
@@ -1981,12 +1975,24 @@ struct S
         return *this;
     }
 
+    const S& operator=(const S&) const
+    {
+        copy_asgn_calls++;
+        return *this;
+    }
+
     S(S&&)
     {
         move_ctor_calls++;
     }
 
     S& operator=(S&&)
+    {
+        move_asgn_calls++;
+        return *this;
+    }
+
+    const S& operator=(S&&) const
     {
         move_asgn_calls++;
         return *this;
@@ -2262,17 +2268,67 @@ void iter_assign_from_test()
     }
 }
 
-// TODO
-// test with pure transformations which return by-value
-// don't test everything, it's just a POC
-// test iterators with defined CPO-s?
+void iter_swap_test()
+{
+    {
+        using it_t = It1;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 2);
+    }
+
+    {
+        using it_t = It2;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 2);
+    }
+
+    {
+        using it_t = It3;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 2);
+    }
+}
+
 int main()
 {
     iter_move_test();
     iter_copy_root_test();
     iter_move_root_test();
     iter_assign_from_test();
-    // iter_swap_test();
+    iter_swap_test();
 
     projection_test();
     narrow_projection_test();
