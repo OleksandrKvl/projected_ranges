@@ -7,11 +7,13 @@ target_sources(${EXE_NAME}
 )
 
 # Add compiler flags
-if(MSVC)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options(${EXE_NAME} PRIVATE /W3 /WX)
-else()
-    # target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -Wpedantic -fconcepts-diagnostics-depth=100)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(${EXE_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${EXE_NAME} PRIVATE
+        -Wall -Wextra -Wpedantic -fconcepts-diagnostics-depth=100)
 endif()
 
 # Add compiler definitions
