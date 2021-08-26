@@ -463,14 +463,17 @@ private:
         using type = decltype(iter_move_root(std::declval<From>()));
     };
 
+    // clang-format off
     template<typename From>
     requires(
         !has_adl_iter_move_root<From> &&
         std::is_lvalue_reference_v<
-            iter_root_reference_t<From>>) struct result<From>
+            iter_root_reference_t<From>>)
+    struct result<From>
     {
         using type = std::remove_reference_t<iter_root_reference_t<From>>&&;
     };
+    // clang-format on
 
     template<typename From>
     using result_t = typename result<From>::type;
