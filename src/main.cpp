@@ -396,10 +396,10 @@ inline constexpr iter_copy_root_cpo::impl iter_copy_root{};
 
 template<typename T>
 using iter_root_t =
-    std::remove_cvref_t<decltype(iter_copy_root(std::declval<T>()))>;
+    std::remove_cvref_t<decltype(stdf::iter_copy_root(std::declval<T>()))>;
 
 template<typename T>
-using iter_root_reference_t = decltype(iter_copy_root(std::declval<T>()));
+using iter_root_reference_t = decltype(stdf::iter_copy_root(std::declval<T>()));
 
 template<typename T>
 using range_root_t = iter_root_t<std::ranges::iterator_t<T>>;
@@ -431,7 +431,7 @@ private:
         }
         else
         {
-            return noexcept(iter_copy_root(std::declval<From>()));
+            return noexcept(stdf::iter_copy_root(std::declval<From>()));
         }
     }
 
@@ -444,7 +444,7 @@ private:
         }
         else
         {
-            return noexcept(iter_copy_root(
+            return noexcept(stdf::iter_copy_root(
                 std::declval<From>(),
                 std::declval<std::iter_reference_t<From>&>()));
         }
@@ -490,11 +490,11 @@ public:
         else if constexpr(std::is_lvalue_reference_v<
                               iter_root_reference_t<From>>)
         {
-            return std::move(iter_copy_root(static_cast<From&&>(from)));
+            return std::move(stdf::iter_copy_root(static_cast<From&&>(from)));
         }
         else
         {
-            return iter_copy_root(static_cast<From&&>(from));
+            return stdf::iter_copy_root(static_cast<From&&>(from));
         }
     }
 
@@ -511,11 +511,12 @@ public:
                               iter_root_reference_t<From>>)
         {
             return std::move(
-                iter_copy_root(static_cast<From&&>(from), dereferenced));
+                stdf::iter_copy_root(static_cast<From&&>(from), dereferenced));
         }
         else
         {
-            return iter_copy_root(static_cast<From&&>(from), dereferenced);
+            return stdf::iter_copy_root(
+                static_cast<From&&>(from), dereferenced);
         }
     }
 };
@@ -528,7 +529,7 @@ inline constexpr iter_move_root_cpo::impl iter_move_root{};
 
 template<typename T>
 using iter_root_rvalue_reference_t =
-    decltype(iter_move_root(std::declval<T>()));
+    decltype(stdf::iter_move_root(std::declval<T>()));
 
 template<typename T>
 using range_root_rvalue_reference_t =
@@ -538,8 +539,8 @@ using range_root_rvalue_reference_t =
 template<typename Out, typename T>
 concept iter_writable = requires(Out&& o, T&& t)
 {
-    iter_assign_from(o, std::forward<T>(t));
-    iter_assign_from(std::forward<Out>(o), std::forward<T>(t));
+    stdf::iter_assign_from(o, std::forward<T>(t));
+    stdf::iter_assign_from(std::forward<Out>(o), std::forward<T>(t));
     // no need to check const_cast-ed types like `indirectly_writable` does
     // because it's already handled by `iter_assign_from`.
 };
@@ -552,8 +553,8 @@ concept iter_root_readable = requires(const T it)
     typename iter_root_t<T>;
     typename iter_root_reference_t<T>;
     typename iter_root_rvalue_reference_t<T>;
-    { iter_copy_root(it) } -> std::same_as<iter_root_reference_t<T>>;
-    { iter_move_root(it) } -> std::same_as<iter_root_rvalue_reference_t<T>>;
+    { stdf::iter_copy_root(it) } -> std::same_as<iter_root_reference_t<T>>;
+    { stdf::iter_move_root(it) } -> std::same_as<iter_root_rvalue_reference_t<T>>;
 } &&
 std::common_reference_with<
     iter_root_reference_t<T>&&, iter_root_t<T>&
@@ -605,11 +606,11 @@ private:
     template<class It1, class It2>
     static constexpr iter_root_t<It1>
         iter_exchange_move(It1&& it1, It2&& it2) noexcept(
-            noexcept(iter_root_t<It1>(iter_move_root(it1))) && noexcept(
-                iter_assign_from(it1, iter_move_root(it2))))
+            noexcept(iter_root_t<It1>(stdf::iter_move_root(it1))) && noexcept(
+                stdf::iter_assign_from(it1, stdf::iter_move_root(it2))))
     {
-        iter_root_t<It1> old_value(iter_move_root(it1));
-        iter_assign_from(it1, iter_move_root(it2));
+        iter_root_t<It1> old_value(stdf::iter_move_root(it1));
+        stdf::iter_assign_from(it1, stdf::iter_move_root(it2));
         return old_value;
     }
 
@@ -621,11 +622,11 @@ private:
             It2&& it2,
             std::iter_reference_t<It1>& d1,
             std::iter_reference_t<It2>& d2) noexcept(
-            noexcept(iter_root_t<It1>(iter_move_root(it1, d1))) && noexcept(
-                iter_assign_from(it1, iter_move_root(it2, d2), d1)))
+            noexcept(iter_root_t<It1>(stdf::iter_move_root(it1, d1))) && noexcept(
+                stdf::iter_assign_from(it1, stdf::iter_move_root(it2, d2), d1)))
     {
-        iter_root_t<It1> old_value(iter_move_root(it1, d1));
-        iter_assign_from(it1, iter_move_root(it2, d2), d1);
+        iter_root_t<It1> old_value(stdf::iter_move_root(it1, d1));
+        stdf::iter_assign_from(it1, stdf::iter_move_root(it2, d2), d1);
         return old_value;
     }
     // clang-format on
@@ -649,7 +650,7 @@ private:
         }
         else
         {
-            return noexcept(iter_assign_from(
+            return noexcept(stdf::iter_assign_from(
                 std::declval<It1>(),
                 iter_exchange_move(std::declval<It2>(), std::declval<It1>())));
         }
@@ -675,7 +676,7 @@ private:
         }
         else
         {
-            return noexcept(iter_assign_from(
+            return noexcept(stdf::iter_assign_from(
                 std::declval<It1>(),
                 iter_exchange_move(
                     std::declval<It2>(),
@@ -712,7 +713,7 @@ public:
         }
         else
         {
-            iter_assign_from(it1, iter_exchange_move(it2, it1));
+            stdf::iter_assign_from(it1, iter_exchange_move(it2, it1));
         }
     }
 
@@ -745,7 +746,8 @@ public:
         }
         else
         {
-            iter_assign_from(it1, iter_exchange_move(it2, it1, d1, d2), d1);
+            stdf::iter_assign_from(
+                it1, iter_exchange_move(it2, it1, d1, d2), d1);
         }
     }
 };
@@ -986,13 +988,13 @@ private:
         friend constexpr decltype(iter_copy_root(std::declval<BaseIter>()))
             iter_copy_root(const Iterator& it) noexcept
         {
-            return iter_copy_root(it.current);
+            return stdf::iter_copy_root(it.current);
         }
 
         friend constexpr decltype(iter_move_root(std::declval<BaseIter>()))
             iter_move_root(const Iterator& it) noexcept
         {
-            return iter_move_root(it.current);
+            return stdf::iter_move_root(it.current);
         }
 
         template<typename T>
@@ -1231,13 +1233,13 @@ private:
         Iterator() = default;
 
         constexpr Iterator(Parent& parent, BaseIter current)
-            : current(std::move(current)), parent(std::addressof(parent))
+            : current{std::move(current)}, parent{std::addressof(parent)}
         {
         }
 
         constexpr Iterator(Iterator<!IsConst> i) requires IsConst
             && std::convertible_to<std::ranges::iterator_t<Range>, BaseIter>
-            : current(std::move(i.current)), parent(i.parent)
+            : current{std::move(i.current)}, parent{i.parent}
         {
         }
 
@@ -1491,30 +1493,30 @@ private:
         friend Sentinel<!IsConst>;
     };
 
-    Range m_base{};
+    Range baseRange{};
     Fp fun;
 
 public:
     narrow_projection_view() = default;
 
     constexpr narrow_projection_view(Range base, Fp fun)
-        : m_base(std::move(base)), fun(std::move(fun))
+        : baseRange{std::move(base)}, fun{std::move(fun)}
     {
     }
 
     constexpr Range base() const& requires std::copy_constructible<Range>
     {
-        return m_base;
+        return baseRange;
     }
 
     constexpr Range base() &&
     {
-        return std::move(m_base);
+        return std::move(baseRange);
     }
 
     constexpr Iterator<false> begin()
     {
-        return Iterator<false>{*this, std::ranges::begin(m_base)};
+        return Iterator<false>{*this, std::ranges::begin(baseRange)};
     }
 
     constexpr Iterator<true> begin() const requires
@@ -1522,17 +1524,17 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Iterator<true>{*this, std::ranges::begin(m_base)};
+        return Iterator<true>{*this, std::ranges::begin(baseRange)};
     }
 
     constexpr Sentinel<false> end()
     {
-        return Sentinel<false>{std::ranges::end(m_base)};
+        return Sentinel<false>{std::ranges::end(baseRange)};
     }
 
     constexpr Iterator<false> end() requires std::ranges::common_range<Range>
     {
-        return Iterator<false>{*this, std::ranges::end(m_base)};
+        return Iterator<false>{*this, std::ranges::end(baseRange)};
     }
 
     constexpr Sentinel<true> end() const requires
@@ -1540,7 +1542,7 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Sentinel<true>{std::ranges::end(m_base)};
+        return Sentinel<true>{std::ranges::end(baseRange)};
     }
 
     constexpr Iterator<true> end() const requires
@@ -1548,17 +1550,17 @@ public:
             const Fp&,
             std::ranges::range_reference_t<const Range>>
     {
-        return Iterator<true>{*this, std::ranges::end(m_base)};
+        return Iterator<true>{*this, std::ranges::end(baseRange)};
     }
 
     constexpr auto size() requires std::ranges::sized_range<Range>
     {
-        return std::ranges::size(m_base);
+        return std::ranges::size(baseRange);
     }
 
     constexpr auto size() const requires std::ranges::sized_range<const Range>
     {
-        return std::ranges::size(m_base);
+        return std::ranges::size(baseRange);
     }
 };
 
@@ -1610,8 +1612,8 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
         auto&& x = *first;
         if(std::invoke(pred, x))
         {
-            iter_assign_from(
-                out, iter_copy_root(first, std::forward<decltype(x)>(x)));
+            stdf::iter_assign_from(
+                out, stdf::iter_copy_root(first, std::forward<decltype(x)>(x)));
 
             ++out;
         }
@@ -1649,7 +1651,7 @@ void sort(R&& r, Cmp cmp = {})
                 min = next;
             }
         }
-        std::ranges::iter_swap(begin, min);
+        stdf::iter_swap(begin, min);
     }
 }
 
@@ -1679,8 +1681,7 @@ constexpr std::ranges::borrowed_subrange_t<R> remove_if(R&& r, Pred pred)
             auto&& x = *i;
             if(!(std::invoke(pred, x)))
             {
-                iter_assign_from(
-                    first, iter_move_root(i, std::forward<decltype(x)>(x)));
+                stdf::iter_assign_from(first, stdf::iter_move_root(i, x));
 
                 ++first;
             }
@@ -1707,7 +1708,7 @@ constexpr std::ranges::borrowed_iterator_t<R> fill(R&& r, const T& value)
     auto last = std::ranges::end(r);
     for(; first != last; ++first)
     {
-        iter_assign_from(first, value);
+        stdf::iter_assign_from(first, value);
     }
     return first;
 }
