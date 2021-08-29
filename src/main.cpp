@@ -1384,21 +1384,21 @@ private:
             return x.current - y.current;
         }
 
-        friend constexpr iter_root_reference_t<BaseIter>
-            iter_copy_root(const Iterator& it) requires(
-                !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>)
-        {
-            return stdf::iter_copy_root(it.current);
-        }
+        // friend constexpr iter_root_reference_t<BaseIter>
+        //     iter_copy_root(const Iterator& it) requires(
+        //         !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>)
+        // {
+        //     return stdf::iter_copy_root(it.current);
+        // }
 
-        template<typename T>
-        friend constexpr void
-            iter_assign_from(const Iterator& it, T&& v) requires(
-                !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>> &&
-                stdf::iter_assignable_from<BaseIter, T>)
-        {
-            stdf::iter_assign_from(it.current, std::forward<T>(v));
-        }
+        // template<typename T>
+        // friend constexpr void
+        //     iter_assign_from(const Iterator& it, T&& v) requires(
+        //         !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>
+        //         && stdf::iter_assignable_from<BaseIter, T>)
+        // {
+        //     stdf::iter_assign_from(it.current, std::forward<T>(v));
+        // }
 
         constexpr auto root() const noexcept
         {
@@ -1612,8 +1612,7 @@ constexpr std::ranges::copy_if_result<std::ranges::borrowed_iterator_t<R>, O>
         auto&& x = *first;
         if(std::invoke(pred, x))
         {
-            stdf::iter_assign_from(
-                out, stdf::iter_copy_root(first, std::forward<decltype(x)>(x)));
+            stdf::iter_assign_from(out, stdf::iter_copy_root(first, x));
 
             ++out;
         }
@@ -2326,6 +2325,39 @@ void iter_swap_test()
     }
 }
 
+void remove_if_count_dereferences()
+{
+    std::size_t calls{};
+    const auto count_dereference_calls = [&](auto& i) -> decltype(auto)
+    {
+        calls++;
+        return i;
+    };
+    const auto is_odd = [](auto& i)
+    {
+        return i & 1;
+    };
+    const std::vector<int> data{1, 2, 2, 4, 4, 6, 6, 8, 8, 10};
+
+    {
+        calls = 0;
+        auto v = data;
+        auto pv = v | std::ranges::views::transform(count_dereference_calls);
+        std::ranges::remove_if(pv, is_odd);
+
+        std::cout << calls << '\n'; // prints 28
+    }
+
+    {
+        calls = 0;
+        auto v = data;
+        auto pv = v | std::ranges::views::transform(count_dereference_calls);
+        stdf::remove_if(pv, is_odd);
+
+        std::cout << calls << '\n'; // prints 19
+    }
+}
+
 int main()
 {
     iter_move_test();
@@ -2341,6 +2373,8 @@ int main()
     remove_if_test();
     fill_test();
     replace_if_test();
+
+    remove_if_count_dereferences();
 
     return 0;
 }
