@@ -71,6 +71,22 @@ inline constexpr auto get_iter_cat()
         return std::input_iterator_tag{};
     }
 }
+
+template<typename It>
+struct root_iter_type_impl
+{
+    using type = It;
+};
+
+template<typename It>
+requires requires(It it)
+{
+    it.root();
+}
+struct root_iter_type_impl<It>
+{
+    using type = decltype(std::declval<It>().root());
+};
 } // namespace detail
 
 // improved iter_move() with "dereferenced" version
@@ -797,22 +813,6 @@ private:
         BaseIter current{};
         ParentView* parent{};
 
-        template<typename It>
-        struct root_type_impl
-        {
-            using type = It;
-        };
-
-        template<typename It>
-        requires requires(It it)
-        {
-            it.root();
-        }
-        struct root_type_impl<It>
-        {
-            using type = decltype(std::declval<It>().root());
-        };
-
     public:
         using iterator_concept = decltype(detail::get_iter_concept<Range>());
         using iterator_category =
@@ -821,7 +821,8 @@ private:
             Fp&,
             std::ranges::range_reference_t<BaseRange>>>;
         using difference_type = std::ranges::range_difference_t<BaseRange>;
-        using root_type = typename root_type_impl<BaseIter>::type;
+        using root_iter_type =
+            typename detail::root_iter_type_impl<BaseIter>::type;
 
         Iterator() = default;
 
@@ -1007,7 +1008,7 @@ private:
             stdf::iter_assign_from(it.current, std::forward<T>(val));
         }
 
-        constexpr root_type root() const noexcept
+        constexpr root_iter_type root() const noexcept
         {
             if constexpr(requires { current.root(); })
             {
@@ -1229,6 +1230,8 @@ private:
         using value_type = std::remove_cvref_t<
             std::invoke_result_t<Fp&, std::ranges::range_reference_t<Base>>>;
         using difference_type = std::ranges::range_difference_t<Base>;
+        using root_iter_type =
+            typename detail::root_iter_type_impl<BaseIter>::type;
 
         Iterator() = default;
 
@@ -1384,23 +1387,7 @@ private:
             return x.current - y.current;
         }
 
-        // friend constexpr iter_root_reference_t<BaseIter>
-        //     iter_copy_root(const Iterator& it) requires(
-        //         !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>)
-        // {
-        //     return stdf::iter_copy_root(it.current);
-        // }
-
-        // template<typename T>
-        // friend constexpr void
-        //     iter_assign_from(const Iterator& it, T&& v) requires(
-        //         !std::is_lvalue_reference_v<std::iter_reference_t<Iterator>>
-        //         && stdf::iter_assignable_from<BaseIter, T>)
-        // {
-        //     stdf::iter_assign_from(it.current, std::forward<T>(v));
-        // }
-
-        constexpr auto root() const noexcept
+        constexpr root_iter_type root() const noexcept
         {
             if constexpr(requires { current.root(); })
             {
@@ -1762,13 +1749,23 @@ void projection_test()
     auto it1 = std::ranges::begin(pv);
     auto it2 = it1 + 1;
 
+    using it_t = decltype(it1);
+    static_assert(std::is_same_v<std::iter_value_t<it_t>, int>);
+    static_assert(std::is_same_v<std::iter_reference_t<it_t>, int&>);
+    static_assert(std::is_same_v<std::iter_rvalue_reference_t<it_t>, int&&>);
+    static_assert(std::is_same_v<stdf::iter_root_t<it_t>, Y>);
+    static_assert(std::is_same_v<stdf::iter_root_reference_t<it_t>, Y&>);
+    static_assert(
+        std::is_same_v<stdf::iter_root_rvalue_reference_t<it_t>, Y&&>);
+    static_assert(stdf::iter_assignable_from<it_t, int>);
+    static_assert(stdf::iter_assignable_from<it_t, Y>);
+    static_assert(stdf::iter_swappable<it_t, it_t>);
+
     assert(*it1 == 1);
     assert(*it2 == 2);
-    static_assert(std::is_same_v<decltype(*it1), int&>);
 
     assert(std::ranges::iter_move(it1) == 1);
     assert(std::ranges::iter_move(it2) == 2);
-    static_assert(std::is_same_v<decltype(std::ranges::iter_move(it1)), int&&>);
 
     std::ranges::iter_swap(it1, it2);
     assert(*it1 == 2);
@@ -1778,8 +1775,6 @@ void projection_test()
 
     auto copied = stdf::iter_copy_root(it1);
     auto moved = stdf::iter_move_root(it2);
-    static_assert(std::is_same_v<decltype(stdf::iter_copy_root(it1)), Y&>);
-    static_assert(std::is_same_v<decltype(stdf::iter_move_root(it2)), Y&&>);
     assert((copied == Y{2, 20}));
     assert((moved == Y{1, 10}));
 
@@ -1793,6 +1788,38 @@ void projection_test()
 
     stdf::iter_assign_from(it1, 1);
     assert((v[0] == Y{1, 20}));
+
+    // test projection which return by-value
+    {
+        std::vector<int> v;
+        auto pv = v | stdf::views::projection(
+                          [](auto&&)
+                          {
+                              return std::string{};
+                          });
+        auto it = std::ranges::begin(pv);
+
+        using it_t = decltype(it);
+        static_assert(std::is_same_v<std::iter_value_t<it_t>, std::string>);
+        static_assert(std::is_same_v<std::iter_reference_t<it_t>, std::string>);
+        static_assert(
+            std::is_same_v<std::iter_rvalue_reference_t<it_t>, std::string>);
+        static_assert(std::is_same_v<stdf::iter_root_t<it_t>, int>);
+        static_assert(std::is_same_v<stdf::iter_root_reference_t<it_t>, int&>);
+        static_assert(
+            std::is_same_v<stdf::iter_root_rvalue_reference_t<it_t>, int&&>);
+        static_assert(
+            std::is_same_v<it_t::root_iter_type, decltype(v)::iterator>);
+
+        [[maybe_unused]] auto&& value_lref = *it;
+        [[maybe_unused]] auto&& value_rref = stdf::iter_move(it);
+        [[maybe_unused]] auto&& root_lref = stdf::iter_copy_root(it);
+        [[maybe_unused]] auto&& root_rref = stdf::iter_move_root(it);
+
+        static_assert(!stdf::iter_assignable_from<it_t, std::string>);
+        static_assert(stdf::iter_assignable_from<it_t, int>);
+        static_assert(stdf::iter_swappable<it_t, it_t>);
+    }
 }
 
 void narrow_projection_test()
@@ -1803,13 +1830,24 @@ void narrow_projection_test()
     auto it1 = std::ranges::begin(pv);
     auto it2 = it1 + 1;
 
+    using it_t = decltype(it1);
+    static_assert(std::is_same_v<std::iter_value_t<it_t>, int>);
+    static_assert(std::is_same_v<std::iter_reference_t<it_t>, int&>);
+    static_assert(std::is_same_v<std::iter_rvalue_reference_t<it_t>, int&&>);
+    static_assert(std::is_same_v<stdf::iter_root_t<it_t>, int>);
+    static_assert(std::is_same_v<stdf::iter_root_reference_t<it_t>, int&>);
+    static_assert(
+        std::is_same_v<stdf::iter_root_rvalue_reference_t<it_t>, int&&>);
+    static_assert(std::is_same_v<it_t::root_iter_type, decltype(v)::iterator>);
+    static_assert(stdf::iter_assignable_from<it_t, int>);
+    static_assert(!stdf::iter_assignable_from<it_t, Y>);
+    static_assert(stdf::iter_swappable<it_t, it_t>);
+
     assert(*it1 == 1);
     assert(*it2 == 2);
-    static_assert(std::is_same_v<decltype(*it1), int&>);
 
     assert(std::ranges::iter_move(it1) == 1);
     assert(std::ranges::iter_move(it2) == 2);
-    static_assert(std::is_same_v<decltype(std::ranges::iter_move(it1)), int&&>);
 
     std::ranges::iter_swap(it1, it2);
     assert(*it1 == 2);
@@ -1819,8 +1857,6 @@ void narrow_projection_test()
 
     auto copied = stdf::iter_copy_root(it1);
     auto moved = stdf::iter_move_root(it2);
-    static_assert(std::is_same_v<decltype(stdf::iter_copy_root(it1)), int&>);
-    static_assert(std::is_same_v<decltype(stdf::iter_move_root(it2)), int&&>);
     assert(copied == 2);
     assert(moved == 1);
 
@@ -1831,6 +1867,38 @@ void narrow_projection_test()
 
     stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 10}));
+
+    // test projection which returns by-value
+    {
+        std::vector<int> v;
+        auto pv = v | stdf::views::narrow_projection(
+                          [](int i)
+                          {
+                              return std::to_string(i);
+                          });
+        auto it = std::ranges::begin(pv);
+
+        using it_t = decltype(it);
+        static_assert(std::is_same_v<std::iter_value_t<it_t>, std::string>);
+        static_assert(std::is_same_v<std::iter_reference_t<it_t>, std::string>);
+        static_assert(
+            std::is_same_v<std::iter_rvalue_reference_t<it_t>, std::string>);
+        static_assert(std::is_same_v<stdf::iter_root_t<it_t>, std::string>);
+        static_assert(
+            std::is_same_v<stdf::iter_root_reference_t<it_t>, std::string>);
+        static_assert(std::is_same_v<
+                      stdf::iter_root_rvalue_reference_t<it_t>,
+                      std::string>);
+
+        [[maybe_unused]] auto&& value_lref = *it;
+        [[maybe_unused]] auto&& value_rref = stdf::iter_move(it);
+        [[maybe_unused]] auto&& root_lref = stdf::iter_copy_root(it);
+        [[maybe_unused]] auto&& root_rref = stdf::iter_move_root(it);
+
+        static_assert(!stdf::iter_assignable_from<it_t, std::string>);
+        static_assert(!stdf::iter_assignable_from<it_t, int>);
+        static_assert(!stdf::iter_swappable<it_t, it_t>);
+    }
 }
 
 template<auto N>
@@ -1956,7 +2024,8 @@ void replace_if_test()
         (v == std::vector<X>{{0, {10, 100}}, {0, {20, 200}}, {3, {30, 300}}}));
 
     // this is possible because `projection` allows to assign both
-    // value_type(int) and root_type(X). `narrow_projection` doesn't allow it
+    // value_type(int) and iter_root_t(X). `narrow_projection` allows only
+    // value_type assignment
     stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, X{0, {0, 0}});
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
 }
@@ -2345,7 +2414,7 @@ void remove_if_count_dereferences()
         auto pv = v | std::ranges::views::transform(count_dereference_calls);
         std::ranges::remove_if(pv, is_odd);
 
-        std::cout << calls << '\n'; // prints 28
+        assert(calls == 28);
     }
 
     {
@@ -2354,7 +2423,7 @@ void remove_if_count_dereferences()
         auto pv = v | std::ranges::views::transform(count_dereference_calls);
         stdf::remove_if(pv, is_odd);
 
-        std::cout << calls << '\n'; // prints 19
+        assert(calls == 19);
     }
 }
 
