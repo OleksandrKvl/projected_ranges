@@ -1789,9 +1789,9 @@ void projection_test()
     stdf::iter_assign_from(it1, 1);
     assert((v[0] == Y{1, 20}));
 
-    // test projection which return by-value
+    // test projection which returns by-value
     {
-        std::vector<int> v;
+        std::vector<int> v{1, 2, 3};
         auto pv = v | stdf::views::projection(
                           [](auto&&)
                           {
@@ -1870,7 +1870,7 @@ void narrow_projection_test()
 
     // test projection which returns by-value
     {
-        std::vector<int> v;
+        std::vector<int> v{1, 2, 3};
         auto pv = v | stdf::views::narrow_projection(
                           [](int i)
                           {
