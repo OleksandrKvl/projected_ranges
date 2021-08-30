@@ -212,200 +212,102 @@ inline namespace cpo
 inline constexpr iter_move_cpo::impl iter_move{};
 }
 
-namespace iter_assign_from_cpo
+namespace iter_copy_root_cpo
 {
-void iter_assign_from();
+void iter_copy_root();
 
-template<typename To, typename From>
-concept has_adl_iter_assign_from =
-    detail::class_or_enum<std::remove_cvref_t<To>> &&
-    requires(To&& to, From&& from)
+template<typename From>
+concept has_adl_iter_copy_root =
+    detail::class_or_enum<std::remove_cvref_t<From>> && requires(From&& from)
 {
-    iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+    iter_copy_root(static_cast<From&&>(from));
 };
 
 struct impl
 {
 private:
-    template<typename To, typename From>
+    template<typename From>
+    struct result
+    {
+        using type = decltype(*std::declval<From>());
+    };
+
+    template<typename From>
+    requires has_adl_iter_copy_root<From>
+    struct result<From>
+    {
+        using type = decltype(iter_copy_root(std::declval<From>()));
+    };
+
+    template<typename From>
+    using result_t = typename result<From>::type;
+
+    template<typename From>
     static constexpr bool is_noexcept()
     {
-        if constexpr(has_adl_iter_assign_from<To, From>)
+        if constexpr(has_adl_iter_copy_root<From>)
         {
-            return noexcept(
-                iter_assign_from(std::declval<To>(), std::declval<From>()));
+            return noexcept(iter_copy_root(std::declval<From>()));
         }
         else
         {
-            return noexcept((*std::declval<To>()) = std::declval<From>());
+            return noexcept(*std::declval<From>());
         }
     }
-
-    template<typename To, typename From>
+    template<typename From>
     static constexpr bool is_noexcept2()
     {
-        if constexpr(has_adl_iter_assign_from<To, From>)
+        if constexpr(has_adl_iter_copy_root<From>)
         {
-            return noexcept(
-                iter_assign_from(std::declval<To>(), std::declval<From>()));
+            return noexcept(iter_copy_root(std::declval<From>()));
+        }
+        else if constexpr(!std::is_reference_v<result_t<From>>)
+        {
+            return std::is_nothrow_constructible_v<
+                result_t<From>,
+                std::iter_reference_t<From>&>;
         }
         else
         {
-            return std::
-                is_nothrow_assignable_v<std::iter_reference_t<To>&, From>;
+            return true;
         }
     }
 
 public:
-    // clang-format off
-    template<typename To, typename From>
-    requires(
-        has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>)
-    constexpr void operator()(
-        To&& to, From&& from) const noexcept(is_noexcept<To, From>())
-    // clang-format on
+    template<typename From>
+    constexpr result_t<From> operator()(From&& from) const
+        noexcept(is_noexcept<From>())
     {
-        if constexpr(has_adl_iter_assign_from<To, From>)
+        if constexpr(has_adl_iter_copy_root<From>)
         {
-            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+            return iter_copy_root(static_cast<From&&>(from));
         }
         else
         {
-            *to = static_cast<From&&>(from);
+            return *from;
         }
     }
-
-    // clang-format off
-    template<typename To, typename From>
-    requires(
-        has_adl_iter_assign_from<To, From> ||
-        std::indirectly_writable<To, From>)
-    constexpr void operator()(
-            To&& to, From&& from, std::iter_reference_t<To>& dereferenced) const
-        noexcept(is_noexcept2<To, From>())
-    // clang-format on
-    {
-        if constexpr(has_adl_iter_assign_from<To, From>)
-        {
-            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
-        }
-        else
-        {
-            dereferenced = static_cast<From&&>(from);
-        }
-    }
-};
-} // namespace iter_assign_from_cpo
-
-inline namespace cpo
-{
-inline constexpr iter_assign_from_cpo::impl iter_assign_from{};
-}
-
-template<typename To, typename From>
-concept iter_assignable_from = requires(To&& to, From&& from)
-{
-    stdf::iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
-};
-
-namespace iter_copy_root_cpo
-{
-    void iter_copy_root();
 
     template<typename From>
-    concept has_adl_iter_copy_root =
-        detail::class_or_enum<std::remove_cvref_t<From>> &&
-        requires(From && from)
+    constexpr result_t<From>
+        operator()(From&& from, std::iter_reference_t<From>& dereferenced) const
+        noexcept(is_noexcept2<From>())
     {
-        iter_copy_root(static_cast<From&&>(from));
-    };
-
-    struct impl
-    {
-    private:
-        template<typename From>
-        struct result
+        if constexpr(has_adl_iter_copy_root<From>)
         {
-            using type = decltype(*std::declval<From>());
-        };
-
-        template<typename From>
-        requires has_adl_iter_copy_root<From>
-        struct result<From>
-        {
-            using type = decltype(iter_copy_root(std::declval<From>()));
-        };
-
-        template<typename From>
-        using result_t = typename result<From>::type;
-
-        template<typename From>
-        static constexpr bool is_noexcept()
-        {
-            if constexpr(has_adl_iter_copy_root<From>)
-            {
-                return noexcept(iter_copy_root(std::declval<From>()));
-            }
-            else
-            {
-                return noexcept(*std::declval<From>());
-            }
+            return iter_copy_root(static_cast<From&&>(from));
         }
-        template<typename From>
-        static constexpr bool is_noexcept2()
+        else if constexpr(std::is_lvalue_reference_v<
+                              std::iter_reference_t<From>>)
         {
-            if constexpr(has_adl_iter_copy_root<From>)
-            {
-                return noexcept(iter_copy_root(std::declval<From>()));
-            }
-            else if constexpr(!std::is_reference_v<result_t<From>>)
-            {
-                return std::is_nothrow_constructible_v<
-                    result_t<From>,
-                    std::iter_reference_t<From>&>;
-            }
-            else
-            {
-                return true;
-            }
+            return dereferenced;
         }
-
-    public:
-        template<typename From>
-        constexpr result_t<From> operator()(From&& from) const
-            noexcept(is_noexcept<From>())
+        else
         {
-            if constexpr(has_adl_iter_copy_root<From>)
-            {
-                return iter_copy_root(static_cast<From&&>(from));
-            }
-            else
-            {
-                return *from;
-            }
+            return std::move(dereferenced);
         }
-
-        template<typename From>
-        constexpr result_t<From> operator()(
-            From&& from, std::iter_reference_t<From>& dereferenced) const
-            noexcept(is_noexcept2<From>())
-        {
-            if constexpr(has_adl_iter_copy_root<From>)
-            {
-                return iter_copy_root(static_cast<From&&>(from));
-            }
-            else if constexpr(std::is_lvalue_reference_v<
-                                  std::iter_reference_t<From>>)
-            {
-                return dereferenced;
-            }
-            else
-            {
-                return std::move(dereferenced);
-            }
-        }
-    };
+    }
+};
 } // namespace iter_copy_root_cpo
 
 inline namespace cpo
@@ -427,62 +329,179 @@ template<typename T>
 using range_root_reference_t =
     iter_root_reference_t<std::ranges::iterator_t<T>>;
 
-namespace iter_move_root_cpo
+namespace iter_assign_from_cpo
 {
-void iter_move_root();
+void iter_assign_from();
 
-template<typename From>
-concept has_adl_iter_move_root =
-    detail::class_or_enum<std::remove_cvref_t<From>> && requires(From&& from)
+template<typename To, typename From>
+concept has_adl_iter_assign_from =
+    detail::class_or_enum<std::remove_cvref_t<To>> &&
+    requires(To&& to, From&& from)
 {
-    iter_move_root(static_cast<From&&>(from));
+    iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+};
+
+// analog of std::indirectly_writable
+template<typename To, typename From>
+concept iter_root_writable = requires(To&& to, From&& from)
+{
+    stdf::iter_copy_root(to) = std::forward<From>(from);
+    stdf::iter_copy_root(std::forward<To>(to)) = std::forward<From>(from);
+    const_cast<const stdf::iter_root_reference_t<To>&&>(
+        stdf::iter_copy_root(to)) = std::forward<From>(from);
+    const_cast<const stdf::iter_root_reference_t<To>&&>(
+        stdf::iter_copy_root(std::forward<To>(to))) = std::forward<From>(from);
 };
 
 struct impl
 {
 private:
-    template<typename From>
+    template<typename To, typename From>
     static constexpr bool is_noexcept()
     {
-        if constexpr(has_adl_iter_move_root<From>)
+        if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            return noexcept(iter_move_root(std::declval<From>()));
+            return noexcept(
+                iter_assign_from(std::declval<To>(), std::declval<From>()));
         }
         else
         {
-            return noexcept(stdf::iter_copy_root(std::declval<From>()));
+            return noexcept(
+                stdf::iter_copy_root(std::declval<To>()) =
+                    std::declval<From>());
         }
     }
 
-    template<typename From>
+    template<typename To, typename From>
     static constexpr bool is_noexcept2()
     {
-        if constexpr(has_adl_iter_move_root<From>)
+        if constexpr(has_adl_iter_assign_from<To, From>)
         {
-            return noexcept(iter_move_root(std::declval<From>()));
+            return noexcept(
+                iter_assign_from(std::declval<To>(), std::declval<From>()));
         }
         else
         {
-            return noexcept(stdf::iter_copy_root(
-                std::declval<From>(),
-                std::declval<std::iter_reference_t<From>&>()));
+            return noexcept(
+                stdf::iter_copy_root(
+                    std::declval<To>(),
+                    std::declval<std::iter_reference_t<To>&>()) =
+                    std::declval<From>());
         }
     }
 
-    template<typename From>
-    struct result
+public:
+    // clang-format off
+    template<typename To, typename From>
+    requires(
+        has_adl_iter_assign_from<To, From>
+        || iter_root_writable<To, From>)
+    constexpr void operator()(
+        To&& to, From&& from) const noexcept(is_noexcept<To, From>())
+    // clang-format on
     {
-        using type = iter_root_reference_t<From>;
-    };
-
-    template<typename From>
-    requires has_adl_iter_move_root<From>
-    struct result<From>
-    {
-        using type = decltype(iter_move_root(std::declval<From>()));
-    };
+        if constexpr(has_adl_iter_assign_from<To, From>)
+        {
+            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+        }
+        else
+        {
+            stdf::iter_copy_root(static_cast<To&&>(to)) =
+                static_cast<From&&>(from);
+        }
+    }
 
     // clang-format off
+    template<typename To, typename From>
+    requires(
+        has_adl_iter_assign_from<To, From>
+        || iter_root_writable<To, From>)
+    constexpr void operator()(
+            To&& to, From&& from, std::iter_reference_t<To>& dereferenced) const
+        noexcept(is_noexcept2<To, From>())
+    // clang-format on
+    {
+        if constexpr(has_adl_iter_assign_from<To, From>)
+        {
+            iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+        }
+        else
+        {
+            stdf::iter_copy_root(static_cast<To&&>(to), dereferenced) =
+                static_cast<From&&>(from);
+        }
+    }
+};
+} // namespace iter_assign_from_cpo
+
+inline namespace cpo
+{
+inline constexpr iter_assign_from_cpo::impl iter_assign_from{};
+}
+
+template<typename To, typename From>
+concept iter_assignable_from = requires(To&& to, From&& from)
+{
+    stdf::iter_assign_from(static_cast<To&&>(to), static_cast<From&&>(from));
+};
+
+namespace iter_move_root_cpo
+{
+    void iter_move_root();
+
+    template<typename From>
+    concept has_adl_iter_move_root =
+        detail::class_or_enum<std::remove_cvref_t<From>> &&
+        requires(From && from)
+    {
+        iter_move_root(static_cast<From&&>(from));
+    };
+
+    struct impl
+    {
+    private:
+        template<typename From>
+        static constexpr bool is_noexcept()
+        {
+            if constexpr(has_adl_iter_move_root<From>)
+            {
+                return noexcept(iter_move_root(std::declval<From>()));
+            }
+            else
+            {
+                return noexcept(stdf::iter_copy_root(std::declval<From>()));
+            }
+        }
+
+        template<typename From>
+        static constexpr bool is_noexcept2()
+        {
+            if constexpr(has_adl_iter_move_root<From>)
+            {
+                return noexcept(iter_move_root(std::declval<From>()));
+            }
+            else
+            {
+                return noexcept(stdf::iter_copy_root(
+                    std::declval<From>(),
+                    std::declval<std::iter_reference_t<From>&>()));
+            }
+        }
+
+        template<typename From>
+        struct result
+        {
+            using type = iter_root_reference_t<From>;
+        };
+
+        template<typename From>
+        requires has_adl_iter_move_root<From>
+        struct result<From>
+        {
+            using type = decltype(iter_move_root(std::declval<From>()));
+        };
+
+        // clang-format off
     template<typename From>
     requires(
         !has_adl_iter_move_root<From> &&
@@ -492,53 +511,54 @@ private:
     {
         using type = std::remove_reference_t<iter_root_reference_t<From>>&&;
     };
-    // clang-format on
+        // clang-format on
 
-    template<typename From>
-    using result_t = typename result<From>::type;
+        template<typename From>
+        using result_t = typename result<From>::type;
 
-public:
-    template<typename From>
-    constexpr result_t<From> operator()(From&& from) const
-        noexcept(is_noexcept<From>())
-    {
-        if constexpr(has_adl_iter_move_root<From>)
+    public:
+        template<typename From>
+        constexpr result_t<From> operator()(From&& from) const
+            noexcept(is_noexcept<From>())
         {
-            return iter_move_root(static_cast<From&&>(from));
+            if constexpr(has_adl_iter_move_root<From>)
+            {
+                return iter_move_root(static_cast<From&&>(from));
+            }
+            else if constexpr(std::is_lvalue_reference_v<
+                                  iter_root_reference_t<From>>)
+            {
+                return std::move(
+                    stdf::iter_copy_root(static_cast<From&&>(from)));
+            }
+            else
+            {
+                return stdf::iter_copy_root(static_cast<From&&>(from));
+            }
         }
-        else if constexpr(std::is_lvalue_reference_v<
-                              iter_root_reference_t<From>>)
-        {
-            return std::move(stdf::iter_copy_root(static_cast<From&&>(from)));
-        }
-        else
-        {
-            return stdf::iter_copy_root(static_cast<From&&>(from));
-        }
-    }
 
-    template<typename From>
-    constexpr result_t<From>
-        operator()(From&& from, std::iter_reference_t<From>& dereferenced) const
-        noexcept(is_noexcept2<From>())
-    {
-        if constexpr(has_adl_iter_move_root<From>)
+        template<typename From>
+        constexpr result_t<From> operator()(
+            From&& from, std::iter_reference_t<From>& dereferenced) const
+            noexcept(is_noexcept2<From>())
         {
-            return iter_move_root(static_cast<From&&>(from));
+            if constexpr(has_adl_iter_move_root<From>)
+            {
+                return iter_move_root(static_cast<From&&>(from));
+            }
+            else if constexpr(std::is_lvalue_reference_v<
+                                  iter_root_reference_t<From>>)
+            {
+                return std::move(stdf::iter_copy_root(
+                    static_cast<From&&>(from), dereferenced));
+            }
+            else
+            {
+                return stdf::iter_copy_root(
+                    static_cast<From&&>(from), dereferenced);
+            }
         }
-        else if constexpr(std::is_lvalue_reference_v<
-                              iter_root_reference_t<From>>)
-        {
-            return std::move(
-                stdf::iter_copy_root(static_cast<From&&>(from), dereferenced));
-        }
-        else
-        {
-            return stdf::iter_copy_root(
-                static_cast<From&&>(from), dereferenced);
-        }
-    }
-};
+    };
 } // namespace iter_move_root_cpo
 
 inline namespace cpo
@@ -1004,13 +1024,14 @@ private:
         }
 
         template<typename T>
-        requires iter_assignable_from<BaseIter, T&&>
+        requires std::indirectly_writable<Iterator, T&&>
         friend constexpr void
             iter_assign_from(const Iterator& it, T&& val) noexcept(
-                noexcept(stdf::iter_assign_from(
-                    std::declval<BaseIter>(), std::declval<T&&>())))
+                noexcept(std::is_nothrow_assignable_v<
+                         std::iter_reference_t<Iterator>,
+                         T&&>))
         {
-            stdf::iter_assign_from(it.current, std::forward<T>(val));
+            *it = std::forward<T>(val);
         }
 
         constexpr root_iter_type root() const noexcept
@@ -2433,11 +2454,8 @@ void remove_if_count_dereferences()
 }
 
 // update article implementation! also parallel_projection
-// currently, default iter_swap operates on value_types, should it operate on
-// root_type?
-// the same is for iter_assign_from, default implementation assigns to *it,
-// probably it should assign to iter_copy_root(). Think in terms of existing
-// algorithms and iterators.
+// currently, default iter_swap operates on value_types.
+// it should operate on root_type.
 
 int main()
 {
