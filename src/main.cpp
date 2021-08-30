@@ -79,10 +79,13 @@ struct root_iter_type_impl
 };
 
 template<typename It>
-requires requires(It it)
+concept has_root_member = requires(It it)
 {
     it.root();
-}
+};
+
+template<typename It>
+requires has_root_member<It>
 struct root_iter_type_impl<It>
 {
     using type = decltype(std::declval<It>().root());
@@ -982,18 +985,20 @@ private:
             iter_swap(const Iterator& x, const Iterator& y) noexcept(
                 noexcept(stdf::iter_swap(x.current, y.current))) requires
             stdf::iter_swappable<BaseIter, BaseIter>
+        // && iter_swap_cpo::has_adl_iter_swap<BaseIter, BaseIter>
         {
             return stdf::iter_swap(x.current, y.current);
         }
 
-        friend constexpr decltype(iter_copy_root(std::declval<BaseIter>()))
+        friend constexpr iter_root_reference_t<BaseIter>
             iter_copy_root(const Iterator& it) noexcept
         {
             return stdf::iter_copy_root(it.current);
         }
 
-        friend constexpr decltype(iter_move_root(std::declval<BaseIter>()))
-            iter_move_root(const Iterator& it) noexcept
+        friend constexpr iter_root_rvalue_reference_t<BaseIter>
+            iter_move_root(const Iterator& it) noexcept requires
+            iter_move_root_cpo::has_adl_iter_move_root<BaseIter>
         {
             return stdf::iter_move_root(it.current);
         }
@@ -1010,7 +1015,7 @@ private:
 
         constexpr root_iter_type root() const noexcept
         {
-            if constexpr(requires { current.root(); })
+            if constexpr(detail::has_root_member<BaseIter>)
             {
                 return current.root();
             }
@@ -1389,7 +1394,7 @@ private:
 
         constexpr root_iter_type root() const noexcept
         {
-            if constexpr(requires { current.root(); })
+            if constexpr(detail::has_root_member<BaseIter>)
             {
                 return current.root();
             }
@@ -2426,6 +2431,13 @@ void remove_if_count_dereferences()
         assert(calls == 19);
     }
 }
+
+// update article implementation! also parallel_projection
+// currently, default iter_swap operates on value_types, should it operate on
+// root_type?
+// the same is for iter_assign_from, default implementation assigns to *it,
+// probably it should assign to iter_copy_root(). Think in terms of existing
+// algorithms and iterators.
 
 int main()
 {
