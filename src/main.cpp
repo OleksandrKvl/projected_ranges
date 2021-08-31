@@ -467,6 +467,12 @@ namespace iter_move_root_cpo
             {
                 return noexcept(iter_move_root(std::declval<From>()));
             }
+            else if constexpr(
+                iter_move_cpo::has_adl_iter_move<From> &&
+                !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
+            {
+                return noexcept(stdf::iter_move(std::declval<From>()));
+            }
             else
             {
                 return noexcept(stdf::iter_copy_root(std::declval<From>()));
@@ -479,6 +485,12 @@ namespace iter_move_root_cpo
             if constexpr(has_adl_iter_move_root<From>)
             {
                 return noexcept(iter_move_root(std::declval<From>()));
+            }
+            else if constexpr(
+                iter_move_cpo::has_adl_iter_move<From> &&
+                !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
+            {
+                return noexcept(stdf::iter_move(std::declval<From>()));
             }
             else
             {
@@ -502,16 +514,27 @@ namespace iter_move_root_cpo
         };
 
         // clang-format off
-    template<typename From>
-    requires(
-        !has_adl_iter_move_root<From> &&
-        std::is_lvalue_reference_v<
-            iter_root_reference_t<From>>)
-    struct result<From>
-    {
-        using type = std::remove_reference_t<iter_root_reference_t<From>>&&;
-    };
+        template<typename From>
+        requires(
+            !has_adl_iter_move_root<From> &&
+            !iter_move_cpo::has_adl_iter_move<From> &&
+            std::is_lvalue_reference_v<iter_root_reference_t<From>>)
+        struct result<From>
+        {
+            using type = std::remove_reference_t<iter_root_reference_t<From>>&&;
+        };
         // clang-format on
+
+        // clang-format off
+        template<typename From>
+        requires(!has_adl_iter_move_root<From> &&
+            iter_move_cpo::has_adl_iter_move<From> &&
+            !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
+            // clang-format on
+            struct result<From>
+        {
+            using type = std::iter_rvalue_reference_t<From>;
+        };
 
         template<typename From>
         using result_t = typename result<From>::type;
@@ -524,6 +547,12 @@ namespace iter_move_root_cpo
             if constexpr(has_adl_iter_move_root<From>)
             {
                 return iter_move_root(static_cast<From&&>(from));
+            }
+            else if constexpr(
+                iter_move_cpo::has_adl_iter_move<From> &&
+                !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
+            {
+                return stdf::iter_move(static_cast<From&&>(from));
             }
             else if constexpr(std::is_lvalue_reference_v<
                                   iter_root_reference_t<From>>)
@@ -545,6 +574,12 @@ namespace iter_move_root_cpo
             if constexpr(has_adl_iter_move_root<From>)
             {
                 return iter_move_root(static_cast<From&&>(from));
+            }
+            else if constexpr(
+                iter_move_cpo::has_adl_iter_move<From> &&
+                !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
+            {
+                return stdf::iter_move(static_cast<From&&>(from));
             }
             else if constexpr(std::is_lvalue_reference_v<
                                   iter_root_reference_t<From>>)
@@ -679,13 +714,14 @@ private:
                 iter_swap(std::declval<It1>(), std::declval<It2>()));
         }
         else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            iter_root_readable<It1> && iter_root_readable<It2> &&
             std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
+                iter_root_reference_t<It1>,
+                iter_root_reference_t<It2>>)
         {
-            return noexcept(
-                std::ranges::swap(*std::declval<It1>(), *std::declval<It2>()));
+            return noexcept(std::ranges::swap(
+                stdf::iter_copy_root(std::declval<It1>()),
+                stdf::iter_copy_root(std::declval<It2>())));
         }
         else
         {
@@ -704,14 +740,18 @@ private:
                 iter_swap(std::declval<It1>(), std::declval<It2>()));
         }
         else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            iter_root_readable<It1> && iter_root_readable<It2> &&
             std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
+                iter_root_reference_t<It1>,
+                iter_root_reference_t<It2>>)
         {
             return noexcept(std::ranges::swap(
-                std::declval<std::iter_reference_t<It1>&>(),
-                std::declval<std::iter_reference_t<It1>&>()));
+                stdf::iter_copy_root(
+                    std::declval<It1>(),
+                    std::declval<std::iter_reference_t<It1>&>()),
+                stdf::iter_copy_root(
+                    std::declval<It2>(),
+                    std::declval<std::iter_reference_t<It2>&>())));
         }
         else
         {
@@ -731,10 +771,10 @@ public:
     constexpr void operator()(It1&& it1, It2&& it2) const
         noexcept(is_noexcept<It1, It2>()) requires(
             has_adl_iter_swap<It1, It2> ||
-            (std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            (iter_root_readable<It1> && iter_root_readable<It2> &&
              std::swappable_with<
-                 std::iter_reference_t<It1>,
-                 std::iter_reference_t<It2>>) ||
+                 iter_root_reference_t<It1>,
+                 iter_root_reference_t<It2>>) ||
             (iter_movable_storable<It1, It2> &&
              iter_movable_storable<It2, It1>))
     {
@@ -743,12 +783,13 @@ public:
             iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
         }
         else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            iter_root_readable<It1> && iter_root_readable<It2> &&
             std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
+                iter_root_reference_t<It1>,
+                iter_root_reference_t<It2>>)
         {
-            std::ranges::swap(*it1, *it2);
+            std::ranges::swap(
+                stdf::iter_copy_root(it1), stdf::iter_copy_root(it2));
         }
         else
         {
@@ -776,12 +817,13 @@ public:
             iter_swap(static_cast<It1&&>(it1), static_cast<It2&&>(it2));
         }
         else if constexpr(
-            std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            iter_root_readable<It1> && iter_root_readable<It2> &&
             std::swappable_with<
-                std::iter_reference_t<It1>,
-                std::iter_reference_t<It2>>)
+                iter_root_reference_t<It1>,
+                iter_root_reference_t<It2>>)
         {
-            std::ranges::swap(d1, d2);
+            std::ranges::swap(
+                stdf::iter_copy_root(it1, d1), stdf::iter_copy_root(it2, d2));
         }
         else
         {
@@ -1004,25 +1046,28 @@ private:
         friend constexpr void
             iter_swap(const Iterator& x, const Iterator& y) noexcept(
                 noexcept(stdf::iter_swap(x.current, y.current))) requires
-            stdf::iter_swappable<BaseIter, BaseIter>
-        // && iter_swap_cpo::has_adl_iter_swap<BaseIter, BaseIter>
+            stdf::iter_swappable<BaseIter, BaseIter> &&
+            iter_swap_cpo::has_adl_iter_swap<BaseIter, BaseIter>
         {
             return stdf::iter_swap(x.current, y.current);
         }
 
         friend constexpr iter_root_reference_t<BaseIter>
-            iter_copy_root(const Iterator& it) noexcept
+            iter_copy_root(const Iterator& it) noexcept(
+                noexcept(stdf::iter_copy_root(it.current)))
         {
             return stdf::iter_copy_root(it.current);
         }
 
         friend constexpr iter_root_rvalue_reference_t<BaseIter>
-            iter_move_root(const Iterator& it) noexcept requires
+            iter_move_root(const Iterator& it) noexcept(
+                noexcept(stdf::iter_move_root(it.current))) requires
             iter_move_root_cpo::has_adl_iter_move_root<BaseIter>
         {
             return stdf::iter_move_root(it.current);
         }
 
+        // to allow assignment to projected part
         template<typename T>
         requires std::indirectly_writable<Iterator, T&&>
         friend constexpr void
@@ -1032,6 +1077,18 @@ private:
                          T&&>))
         {
             *it = std::forward<T>(val);
+        }
+
+        // if `BaseIter` has custom `iter_assign_from` we want to use it instead
+        // of default implementation
+        template<typename T>
+        requires iter_assign_from_cpo::
+            has_adl_iter_assign_from<Iterator::BaseIter, T&&>
+        friend constexpr void
+            iter_assign_from(const Iterator& it, T&& val) noexcept(noexcept(
+                stdf::iter_assign_from(it.current, std::forward<T>(val))))
+        {
+            stdf::iter_assign_from(it.current, std::forward<T>(val));
         }
 
         constexpr root_iter_type root() const noexcept
@@ -1790,10 +1847,10 @@ void projection_test()
     assert(*it1 == 1);
     assert(*it2 == 2);
 
-    assert(std::ranges::iter_move(it1) == 1);
-    assert(std::ranges::iter_move(it2) == 2);
+    assert(stdf::iter_move(it1) == 1);
+    assert(stdf::iter_move(it2) == 2);
 
-    std::ranges::iter_swap(it1, it2);
+    stdf::iter_swap(it1, it2);
     assert(*it1 == 2);
     assert(*it2 == 1);
     assert((v[0] == Y{2, 20}));
@@ -1872,10 +1929,10 @@ void narrow_projection_test()
     assert(*it1 == 1);
     assert(*it2 == 2);
 
-    assert(std::ranges::iter_move(it1) == 1);
-    assert(std::ranges::iter_move(it2) == 2);
+    assert(stdf::iter_move(it1) == 1);
+    assert(stdf::iter_move(it2) == 2);
 
-    std::ranges::iter_swap(it1, it2);
+    stdf::iter_swap(it1, it2);
     assert(*it1 == 2);
     assert(*it2 == 1);
     assert((v[0] == Y{2, 10}));
@@ -2446,7 +2503,7 @@ void remove_if_count_dereferences()
     {
         calls = 0;
         auto v = data;
-        auto pv = v | std::ranges::views::transform(count_dereference_calls);
+        auto pv = v | stdf::views::projection(count_dereference_calls);
         stdf::remove_if(pv, is_odd);
 
         assert(calls == 19);
@@ -2454,9 +2511,6 @@ void remove_if_count_dereferences()
 }
 
 // update article implementation! also parallel_projection
-// currently, default iter_swap operates on value_types.
-// it should operate on root_type.
-
 int main()
 {
     iter_move_test();
