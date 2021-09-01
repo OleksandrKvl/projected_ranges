@@ -805,10 +805,10 @@ public:
         std::iter_reference_t<It2>& d2) const
         noexcept(is_noexcept2<It1, It2>()) requires(
             has_adl_iter_swap<It1, It2> ||
-            (std::indirectly_readable<It1> && std::indirectly_readable<It2> &&
+            (iter_root_readable<It1> && iter_root_readable<It2> &&
              std::swappable_with<
-                 std::iter_reference_t<It1>,
-                 std::iter_reference_t<It2>>) ||
+                 iter_root_reference_t<It1>,
+                 iter_root_reference_t<It2>>) ||
             (iter_movable_storable<It1, It2> &&
              iter_movable_storable<It2, It1>))
     {
@@ -1065,18 +1065,6 @@ private:
             iter_move_root_cpo::has_adl_iter_move_root<BaseIter>
         {
             return stdf::iter_move_root(it.current);
-        }
-
-        // to allow assignment to projected part
-        template<typename T>
-        requires std::indirectly_writable<Iterator, T&&>
-        friend constexpr void
-            iter_assign_from(const Iterator& it, T&& val) noexcept(
-                noexcept(std::is_nothrow_assignable_v<
-                         std::iter_reference_t<Iterator>,
-                         T&&>))
-        {
-            *it = std::forward<T>(val);
         }
 
         // if `BaseIter` has custom `iter_assign_from` we want to use it instead
@@ -1770,7 +1758,7 @@ concept output_range =
     std::ranges::range<R> && output_iterator<std::ranges::iterator_t<R>, T>;
 
 // originally, fill doesn't support projections at all
-template<class T, std::ranges::output_range<const T&> R>
+template<class T, output_range<const T&> R>
 constexpr std::ranges::borrowed_iterator_t<R> fill(R&& r, const T& value)
 {
     auto first = std::ranges::begin(r);
@@ -1840,7 +1828,6 @@ void projection_test()
     static_assert(std::is_same_v<stdf::iter_root_reference_t<it_t>, Y&>);
     static_assert(
         std::is_same_v<stdf::iter_root_rvalue_reference_t<it_t>, Y&&>);
-    static_assert(stdf::iter_assignable_from<it_t, int>);
     static_assert(stdf::iter_assignable_from<it_t, Y>);
     static_assert(stdf::iter_swappable<it_t, it_t>);
 
@@ -1869,8 +1856,6 @@ void projection_test()
     stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 20}));
 
-    stdf::iter_assign_from(it1, 1);
-    assert((v[0] == Y{1, 20}));
 
     // test projection which returns by-value
     {
@@ -2085,15 +2070,16 @@ void fill_test()
     using namespace stdf::views;
 
     std::vector<X> v{{1, {10, 100}}, {2, {20, 200}}, {3, {30, 300}}};
-    auto pv = v | projection(&X::x);
+    auto pv1 = v | projection(&X::x);
+    auto pv2 = v | narrow_projection(&X::x);
 
-    stdf::fill(pv, 5);
-    assert(
-        (v == std::vector<X>{{5, {10, 100}}, {5, {20, 200}}, {5, {30, 300}}}));
-
-    stdf::fill(v, X{1, {10, 100}});
+    stdf::fill(pv1, X{1, {10, 100}});
     assert(
         (v == std::vector<X>{{1, {10, 100}}, {1, {10, 100}}, {1, {10, 100}}}));
+
+    stdf::fill(pv2, 5);
+    assert(
+        (v == std::vector<X>{{5, {10, 100}}, {5, {10, 100}}, {5, {10, 100}}}));
 }
 
 void replace_if_test()
@@ -2102,15 +2088,13 @@ void replace_if_test()
 
     std::vector<X> v{{1, {10, 100}}, {2, {20, 200}}, {3, {30, 300}}};
 
-    stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, 0);
-    assert(
-        (v == std::vector<X>{{0, {10, 100}}, {0, {20, 200}}, {3, {30, 300}}}));
-
-    // this is possible because `projection` allows to assign both
-    // value_type(int) and iter_root_t(X). `narrow_projection` allows only
-    // value_type assignment
+    // with `projection` we replace the whole `X`
     stdf::replace_if(v | projection(&X::x), less_than<int{3}>{}, X{0, {0, 0}});
     assert((v == std::vector<X>{{0, {0, 0}}, {0, {0, 0}}, {3, {30, 300}}}));
+
+    // with `narrow_projection` we replace only `X::x`
+    stdf::replace_if(v | narrow_projection(&X::x), less_than<int{4}>{}, 9);
+    assert((v == std::vector<X>{{9, {0, 0}}, {9, {0, 0}}, {9, {30, 300}}}));
 }
 
 struct S
@@ -2480,7 +2464,7 @@ void iter_swap_test()
 void remove_if_count_dereferences()
 {
     std::size_t calls{};
-    const auto count_dereference_calls = [&](auto& i) -> decltype(auto)
+    const auto count_calls = [&](auto& i) -> decltype(auto)
     {
         calls++;
         return i;
@@ -2492,25 +2476,50 @@ void remove_if_count_dereferences()
     const std::vector<int> data{1, 2, 2, 4, 4, 6, 6, 8, 8, 10};
 
     {
+        // projection is called 10 times, 1 per element
         calls = 0;
         auto v = data;
-        auto pv = v | std::ranges::views::transform(count_dereference_calls);
+        std::ranges::remove_if(v, is_odd, count_calls);
+
+        assert(calls == 10);
+    }
+
+    {
+        // but with `transform` it's called 28 times, because assignment is also
+        // done "through" projection
+        calls = 0;
+        auto v = data;
+        auto pv = v | std::ranges::views::transform(count_calls);
         std::ranges::remove_if(pv, is_odd);
 
         assert(calls == 28);
     }
 
     {
+        // with `views::projection` and updated algorithm, we get same 10 calls
         calls = 0;
         auto v = data;
-        auto pv = v | stdf::views::projection(count_dereference_calls);
+        auto pv = v | stdf::views::projection(count_calls);
         stdf::remove_if(pv, is_odd);
 
-        assert(calls == 19);
+        assert(calls == 10);
+    }
+
+    {
+        // but with updated algorithm and `transform` we get 28 calls because
+        // `transform` customizes `iter_move` to use dereference which calls
+        // projection function
+        calls = 0;
+        auto v = data;
+        auto pv = v | std::ranges::views::transform(count_calls);
+        stdf::remove_if(pv, is_odd);
+
+        assert(calls == 28);
     }
 }
 
 // update article implementation! also parallel_projection
+// test forwarding in CPO-s
 int main()
 {
     iter_move_test();
