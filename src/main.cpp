@@ -90,6 +90,9 @@ struct root_iter_type_impl<It>
 {
     using type = decltype(std::declval<It>().root());
 };
+
+template<typename It>
+using root_iter_t = typename root_iter_type_impl<It>::type;
 } // namespace detail
 
 // improved iter_move() with "dereferenced" version
@@ -530,11 +533,11 @@ namespace iter_move_root_cpo
         requires(!has_adl_iter_move_root<From> &&
             iter_move_cpo::has_adl_iter_move<From> &&
             !iter_copy_root_cpo::has_adl_iter_copy_root<From>)
-            // clang-format on
-            struct result<From>
+        struct result<From>
         {
             using type = std::iter_rvalue_reference_t<From>;
         };
+        // clang-format on
 
         template<typename From>
         using result_t = typename result<From>::type;
@@ -656,7 +659,7 @@ concept iter_movable_storable =
     std::constructible_from<
         iter_root_t<In>, iter_root_rvalue_reference_t<In>> &&
     std::assignable_from<
-        iter_root_t<In>&, iter_root_rvalue_reference_t<In> >;
+        iter_root_t<In>&, iter_root_rvalue_reference_t<In>>;
 // clang-format on
 
 // improved `std::ranges::iter_swap()` with dereferenced version
@@ -886,8 +889,7 @@ private:
             Fp&,
             std::ranges::range_reference_t<BaseRange>>>;
         using difference_type = std::ranges::range_difference_t<BaseRange>;
-        using root_iter_type =
-            typename detail::root_iter_type_impl<BaseIter>::type;
+        using root_iter_type = detail::root_iter_t<BaseIter>;
 
         Iterator() = default;
 
@@ -1301,8 +1303,7 @@ private:
         using value_type = std::remove_cvref_t<
             std::invoke_result_t<Fp&, std::ranges::range_reference_t<Base>>>;
         using difference_type = std::ranges::range_difference_t<Base>;
-        using root_iter_type =
-            typename detail::root_iter_type_impl<BaseIter>::type;
+        using root_iter_type = detail::root_iter_t<BaseIter>;
 
         Iterator() = default;
 
@@ -1794,6 +1795,19 @@ constexpr std::ranges::borrowed_iterator_t<R>
     return first;
 }
 // clang-format on
+
+template<typename It>
+constexpr detail::root_iter_t<It> root(It it) noexcept
+{
+    if constexpr(detail::has_root_member<It>)
+    {
+        return it.root();
+    }
+    else
+    {
+        return it;
+    }
+}
 } // namespace stdf
 
 struct Y
@@ -1855,7 +1869,6 @@ void projection_test()
 
     stdf::iter_assign_from(it1, copied);
     assert((v[0] == Y{2, 20}));
-
 
     // test projection which returns by-value
     {
@@ -2057,11 +2070,11 @@ void remove_if_test()
     auto pv = v | projection(&X::x);
     auto removed = stdf::remove_if(pv, less_than<int{3}>{});
 
-    v.erase(removed.begin().root(), removed.end().root());
+    v.erase(stdf::root(removed.begin()), stdf::root(removed.end()));
     assert((v == std::vector<X>{{3, {30, 300}}}));
 
     auto removed2 = stdf::remove_if(v2, less_than<X{3, {30, 300}}>{});
-    v2.erase(removed2.begin(), removed2.end());
+    v2.erase(stdf::root(removed2.begin()), stdf::root(removed2.end()));
     assert((v2 == std::vector<X>{{3, {30, 300}}}));
 }
 
@@ -2201,6 +2214,107 @@ struct It3
     static inline std::size_t deref_calls{};
 };
 
+struct It4
+{
+    S operator*()
+    {
+        deref_calls++;
+        return S{};
+    }
+
+    friend S iter_move(const It4& /*it*/)
+    {
+        iter_move_calls++;
+        return S{};
+    }
+
+    friend S iter_copy_root(const It4&)
+    {
+        iter_copy_root_calls++;
+        return S{};
+    }
+
+    friend void iter_assign_from(const It4&, const S&)
+    {
+        iter_assign_from_calls++;
+    }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+        iter_move_calls = 0;
+        iter_copy_root_calls = 0;
+        iter_assign_from_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
+    static inline std::size_t iter_move_calls{};
+    static inline std::size_t iter_copy_root_calls{};
+    static inline std::size_t iter_assign_from_calls{};
+};
+
+struct It5
+{
+    S operator*()
+    {
+        deref_calls++;
+        return S{};
+    }
+
+    friend S iter_move(const It5&)
+    {
+        iter_move_calls++;
+        return S{};
+    }
+
+    friend void iter_swap(const It5&, const It5&)
+    {
+        iter_swap_calls++;
+    }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+        iter_move_calls = 0;
+        iter_swap_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
+    static inline std::size_t iter_move_calls{};
+    static inline std::size_t iter_swap_calls{};
+};
+
+struct It6
+{
+    int operator*()
+    {
+        deref_calls++;
+        return {};
+    }
+
+    friend int iter_move_root(const It6&)
+    {
+        iter_move_root_calls++;
+        return {};
+    }
+
+    friend void iter_assign_from(const It6&, int)
+    {
+        iter_assign_from_calls++;
+    }
+
+    static void reset_counters()
+    {
+        deref_calls = 0;
+        iter_move_root_calls = 0;
+        iter_assign_from_calls = 0;
+    }
+
+    static inline std::size_t deref_calls{};
+    static inline std::size_t iter_move_root_calls{};
+    static inline std::size_t iter_assign_from_calls{};
+};
+
 void iter_move_test()
 {
     {
@@ -2217,6 +2331,12 @@ void iter_move_test()
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 1);
         assert(it_t::deref_calls == 1);
+
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r2 =
+            stdf::iter_move(it);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 1);
+        assert(it_t::deref_calls == 1 + 1);
     }
 
     {
@@ -2251,6 +2371,29 @@ void iter_move_test()
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
         assert(it_t::deref_calls == 1);
+    }
+
+    {
+        using it_t = It4;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r =
+            stdf::iter_move(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 1);
+
+        [[maybe_unused]] std::iter_rvalue_reference_t<it_t> r2 =
+            stdf::iter_move(it);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 1 + 1);
     }
 }
 
@@ -2302,6 +2445,29 @@ void iter_copy_root_test()
         assert(S::copy_ctor_calls == 0);
         assert(S::move_ctor_calls == 0);
         assert(it_t::deref_calls == 1);
+    }
+
+    {
+        using it_t = It4;
+        S::reset_counters();
+        it_t::reset_counters();
+
+        static_assert(!std::is_reference_v<stdf::iter_root_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_reference_t<it_t> r =
+            stdf::iter_copy_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_copy_root_calls == 1);
+
+        [[maybe_unused]] stdf::iter_root_reference_t<it_t> r2 =
+            stdf::iter_copy_root(it);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_copy_root_calls == 1 + 1);
     }
 }
 
@@ -2357,6 +2523,58 @@ void iter_move_root_test()
         assert(S::move_ctor_calls == 0);
         assert(it_t::deref_calls == 1);
     }
+
+    {
+        using it_t = It4;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        static_assert(
+            !std::is_reference_v<stdf::iter_root_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r =
+            stdf::iter_move_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 0);
+        assert(it_t::iter_copy_root_calls == 1);
+
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r2 =
+            stdf::iter_move_root(it);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 0);
+        assert(it_t::iter_copy_root_calls == 1 + 1);
+    }
+
+    {
+        using it_t = It5;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        static_assert(
+            !std::is_reference_v<stdf::iter_root_rvalue_reference_t<it_t>>);
+        it_t it;
+        auto&& d = *it;
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r =
+            stdf::iter_move_root(it, d);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 1);
+
+        [[maybe_unused]] stdf::iter_root_rvalue_reference_t<it_t> r2 =
+            stdf::iter_move_root(it);
+        assert(S::copy_ctor_calls == 0);
+        assert(S::move_ctor_calls == 0);
+        assert(it_t::deref_calls == 1);
+        assert(it_t::iter_move_calls == 1 + 1);
+    }
 }
 
 void iter_assign_from_test()
@@ -2405,6 +2623,28 @@ void iter_assign_from_test()
         assert(it_t::deref_calls == 1);
         assert(S::move_asgn_calls == 1);
     }
+
+    {
+        using it_t = It4;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it;
+        auto&& d = *it;
+
+        stdf::iter_assign_from(it, S{}, d);
+
+        assert(it_t::deref_calls == 1);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_assign_from_calls == 1);
+
+        stdf::iter_assign_from(it, S{});
+
+        assert(it_t::deref_calls == 1);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_assign_from_calls == 1 + 1);
+    }
 }
 
 void iter_swap_test()
@@ -2424,6 +2664,10 @@ void iter_swap_test()
 
         assert(it_t::deref_calls == 2);
         assert(S::move_asgn_calls == 2);
+
+        stdf::iter_swap(it1, it2);
+        assert(it_t::deref_calls == 2 + 4);
+        assert(S::move_asgn_calls == 2 + 2);
     }
 
     {
@@ -2459,9 +2703,84 @@ void iter_swap_test()
         assert(it_t::deref_calls == 2);
         assert(S::move_asgn_calls == 2);
     }
+
+    {
+        using it_t = It5;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_swap_calls == 1);
+
+        stdf::iter_swap(it1, it2);
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_swap_calls == 1 + 1);
+    }
+
+    {
+        // in absence of custom iter_swap(), default implementation swaps
+        // iter_copy_root()-s if both iterators are iter_root_readable
+        using it_t = It4;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_copy_root_calls == 2);
+
+        stdf::iter_swap(it1, it2);
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_copy_root_calls == 2 + 2);
+    }
+
+    {
+        // in absence of custom iter_swap() and if both are not
+        // iter_root_readable, root values are swapped using iter_move_root
+        using it_t = It6;
+
+        S::reset_counters();
+        it_t::reset_counters();
+
+        it_t it1;
+        it_t it2;
+        auto&& d1 = *it1;
+        auto&& d2 = *it2;
+
+        stdf::iter_swap(it1, it2, d1, d2);
+
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_move_root_calls == 2);
+        assert(it_t::iter_assign_from_calls == 2);
+
+        stdf::iter_swap(it1, it2);
+        assert(it_t::deref_calls == 2);
+        assert(S::move_asgn_calls == 0);
+        assert(it_t::iter_move_root_calls == 2 + 2);
+        assert(it_t::iter_assign_from_calls == 2 + 2);
+    }
 }
 
-void remove_if_count_dereferences()
+void remove_if_count_dereferences_test()
 {
     std::size_t calls{};
     const auto count_calls = [&](auto& i) -> decltype(auto)
@@ -2518,10 +2837,9 @@ void remove_if_count_dereferences()
     }
 }
 
-// update article implementation! also parallel_projection
-// test forwarding in CPO-s
 int main()
 {
+    // low-level tests
     iter_move_test();
     iter_copy_root_test();
     iter_move_root_test();
@@ -2530,13 +2848,15 @@ int main()
 
     projection_test();
     narrow_projection_test();
+
+    // more useful examples with actual algorithms are here
     copy_if_test();
     sort_test();
     remove_if_test();
     fill_test();
     replace_if_test();
 
-    remove_if_count_dereferences();
+    remove_if_count_dereferences_test();
 
     return 0;
 }
